@@ -1,7 +1,15 @@
 const IST = "Asia/Kolkata";
 
-export const fmtIST = (d: string | Date) =>
-  new Intl.DateTimeFormat("en-IN", {
+function safeDate(d: string | Date | null | undefined): Date | null {
+  if (!d) return null;
+  const dt = d instanceof Date ? d : new Date(d);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+export const fmtIST = (d: string | Date | null | undefined): string => {
+  const dt = safeDate(d);
+  if (!dt) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
     timeZone: IST,
     day: "2-digit",
     month: "short",
@@ -9,18 +17,24 @@ export const fmtIST = (d: string | Date) =>
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(new Date(d));
+  }).format(dt);
+};
 
-export const fmtDate = (d: string | Date) =>
-  new Intl.DateTimeFormat("en-IN", {
+export const fmtDate = (d: string | Date | null | undefined): string => {
+  const dt = safeDate(d);
+  if (!dt) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
     timeZone: IST,
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(d));
+  }).format(dt);
+};
 
-export function timeAgo(d: string | Date) {
-  const s = Math.round((new Date(d).getTime() - Date.now()) / 1000);
+export function timeAgo(d: string | Date | null | undefined): string {
+  const dt = safeDate(d);
+  if (!dt) return "—";
+  const s = Math.round((dt.getTime() - Date.now()) / 1000);
   const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
   const steps: [number, Intl.RelativeTimeFormatUnit][] = [
     [60, "second"],
@@ -33,26 +47,32 @@ export function timeAgo(d: string | Date) {
       const div = unit === "second" ? 1 : unit === "minute" ? 60 : unit === "hour" ? 3600 : 86400;
       return rtf.format(Math.round(s / div), unit);
     }
-  return fmtDate(d);
+  return fmtDate(dt);
 }
 
-export const fmtNum = (n: number) => n.toLocaleString("en-IN");
-
-export const fmtPct = (n: number) => `${Math.round(n)} %`;
-
 /** UI rule: show relative time, exact fmtIST() in a Tooltip on hover. */
-export const tooltipTime = (d: string | Date) => `${fmtIST(d)} (IST)`;
+export const tooltipTime = (d: string | Date | null | undefined): string => {
+  const dt = safeDate(d);
+  if (!dt) return "— (IST)";
+  return `${fmtIST(dt)} (IST)`;
+};
+
+export const fmtNum = (n: number) => n.toLocaleString("en-IN");
+export const fmtPct = (n: number) => `${Math.round(n)} %`;
 
 /* aliases kept for existing imports */
 export const formatDate = fmtIST;
 export const formatDateOnly = fmtDate;
 export const relativeTime = timeAgo;
 export const toTooltip = tooltipTime;
-export function formatTimeOnly(d: string | Date) {
+
+export function formatTimeOnly(d: string | Date | null | undefined): string {
+  const dt = safeDate(d);
+  if (!dt) return "—";
   return new Intl.DateTimeFormat("en-IN", {
     timeZone: IST,
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(new Date(d));
+  }).format(dt);
 }

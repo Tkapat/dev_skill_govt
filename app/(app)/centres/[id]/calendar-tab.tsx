@@ -673,7 +673,7 @@ export function CalendarTab({
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-1.5" suppressHydrationWarning>
               {weeks.flat().map((cell, i) =>
                 cell === "" ? (
                   <span key={`pad-${i}`} aria-hidden />

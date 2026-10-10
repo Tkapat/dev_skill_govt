@@ -19,6 +19,7 @@ import { fmtDate, fmtIST, fmtNum, timeAgo } from "@/lib/format";
 import { SEVERITY, type Severity } from "@/lib/constants";
 import { useStaggerIn } from "@/lib/motion";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { CurrentDateIST } from "@/components/shared/CurrentDateIST";
 import { KpiCard, KpiRowSkeleton } from "@/components/shared/KpiCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -177,7 +178,11 @@ export default function OverviewPage() {
     <div className="space-y-6">
       <PageHeader
         title="Overview"
-        description={`Monitoring dashboard · ${fmtDate(new Date())} (IST) · refreshes every 15 s`}
+        description={
+          <>
+            Monitoring dashboard · <CurrentDateIST /> · refreshes every 15 s
+          </>
+        }
       />
 
       {isLoading ? (
