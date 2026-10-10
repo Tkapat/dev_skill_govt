@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { Toaster } from "sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -20,8 +21,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      {children}
-      <Toaster position="bottom-right" toastOptions={{ duration: 4000 }} richColors closeButton />
+      <TooltipProvider delayDuration={200}>
+        {children}
+        <Toaster position="bottom-right" toastOptions={{ duration: 4000 }} richColors closeButton />
+      </TooltipProvider>
     </QueryClientProvider>
   );
 }

@@ -4,9 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, KeyRound, MoreHorizontal, ScrollText, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarDays, KeyRound, MoreHorizontal, Radio, ScrollText, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtPct, timeAgo } from "@/lib/format";
+import { isYmd, todayIST } from "@/lib/calendar";
 import { getErrorMessage } from "@/lib/strings";
 import { useMe } from "@/hooks/useMe";
 import { toast } from "sonner";
@@ -38,10 +39,14 @@ import {
   OverviewTab,
   TimelineTab,
 } from "./tabs";
+import { LiveTab } from "./live-tab";
+import { CalendarTab } from "./calendar-tab";
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "live", label: "Live", icon: Radio },
   { id: "attendance", label: "Attendance" },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "equipment", label: "Equipment" },
   { id: "cameras", label: "Cameras" },
   { id: "flags", label: "Flags" },
@@ -57,10 +62,14 @@ export default function CentreDetailPage() {
   const { canWrite } = useMe();
 
   const [tab, setTab] = React.useState("overview");
+  const [date, setDate] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("tab");
+    const d = p.get("date");
     if (t && TABS.some((x) => x.id === t)) setTab(t);
+    if (d && isYmd(d)) setDate(d);
   }, []);
 
   const q = useQuery({
@@ -96,7 +105,24 @@ export default function CentreDetailPage() {
 
   const setTabAndUrl = (t: string) => {
     setTab(t);
-    router.replace(`/centres/${id}?tab=${t}`, { scroll: false });
+    const params = new URLSearchParams({ tab: t });
+    if (t === "calendar" && date) params.set("date", date);
+    router.replace(`/centres/${id}?${params.toString()}`, { scroll: false });
+  };
+
+  const setCalendarDate = (d: string | null) => {
+    setDate(d);
+    const params = new URLSearchParams({ tab: "calendar" });
+    if (d) params.set("date", d);
+    router.replace(`/centres/${id}?${params.toString()}`, { scroll: false });
+  };
+
+  const openTodayInCalendar = () => {
+    const d = todayIST();
+    setTab("calendar");
+    setDate(d);
+    const params = new URLSearchParams({ tab: "calendar", date: d });
+    router.replace(`/centres/${id}?${params.toString()}`, { scroll: false });
   };
 
   const centre = q.data?.centre;
@@ -205,6 +231,7 @@ export default function CentreDetailPage() {
               value={t.id}
               className="rounded-md border border-transparent data-[state=active]:border-border data-[state=active]:bg-surface"
             >
+              {"icon" in t && t.icon ? <t.icon className="mr-1.5 h-3.5 w-3.5" aria-hidden /> : null}
               {t.label}
               {t.id === "flags" && openFlags.length > 0 && (
                 <span className="ml-1.5 tabular text-xs text-warning">{openFlags.length}</span>
@@ -216,8 +243,14 @@ export default function CentreDetailPage() {
         <TabsContent value="overview" className="mt-4">
           <OverviewTab centre={centre} />
         </TabsContent>
+        <TabsContent value="live" className="mt-4">
+          <LiveTab cid={id} onOpenToday={openTodayInCalendar} />
+        </TabsContent>
         <TabsContent value="attendance" className="mt-4">
           <AttendanceTab cid={id} />
+        </TabsContent>
+        <TabsContent value="calendar" className="mt-4">
+          <CalendarTab cid={id} date={date} onDateChange={setCalendarDate} />
         </TabsContent>
         <TabsContent value="equipment" className="mt-4">
           <EquipmentTab cid={id} />

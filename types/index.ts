@@ -273,6 +273,176 @@ export interface Notice {
   created_at: string;
 }
 
+export type LiveState = "live" | "idle" | "offline" | "tampered" | "provisional";
+
+export interface LiveCounts {
+  live: number;
+  idle: number;
+  offline: number;
+  tampered: number;
+  provisional: number;
+}
+
+export interface LiveItem {
+  present: number;
+  in_use: number;
+  idle: number;
+  off: number;
+}
+
+export interface LiveStatus {
+  camera_id: string;
+  camera_name: string;
+  centre_id: string;
+  centre_code: string;
+  centre_name: string;
+  district: string;
+  state: LiveState;
+  ts: string;
+  interval_s: number;
+  session: { id: string; label: string; start_ts: string; end_ts: string } | null;
+  people: number;
+  people_smooth: number;
+  claimed: number | null;
+  items: Record<string, LiveItem>;
+  quality: { ok: boolean; reasons: string[] };
+  thumb_url: string;
+  spark: number[];
+  model_version: string;
+}
+
+export interface LiveFeed {
+  items: LiveStatus[];
+  counts: LiveCounts;
+}
+
+export type CalendarDayStatus =
+  | "ok"
+  | "attention"
+  | "critical"
+  | "no_data"
+  | "holiday"
+  | "upcoming"
+  | "none";
+
+export interface TimelinePoint {
+  ts: string;
+  people: number;
+  items?: Record<string, { present: number; in_use: number }>;
+  camera_id?: string;
+}
+
+export interface LiveFlagSummary {
+  id: string;
+  type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: string;
+  reason: string;
+  created_at: string;
+}
+
+/** GET /centres/{id}/live */
+export interface CentreLiveFeed {
+  items: LiveStatus[];
+  counts: LiveCounts;
+  /** today's merged points, newest last (max 240) */
+  timeline: TimelinePoint[];
+  flags: LiveFlagSummary[];
+}
+
+export interface CalendarDayFlags {
+  total: number;
+  open: number;
+  max_severity: "low" | "medium" | "high" | "critical";
+}
+
+export interface CalendarDay {
+  date: string;
+  status: CalendarDayStatus;
+  snapshots: number;
+  updates: number;
+  sessions: number;
+  people_max: number | null;
+  people_avg: number | null;
+  claimed: number | null;
+  observed: number | null;
+  delta: number | null;
+  flags: CalendarDayFlags | null;
+  uptime_pct: number | null;
+  in_use_pct: number | null;
+}
+
+export interface CalendarSession {
+  id: string;
+  batch: string | null;
+  label: string | null;
+  start_ts: string;
+  end_ts: string;
+  state: string;
+  claimed: number | null;
+  observed: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+  delta: number | null;
+  staff_verified: boolean | null;
+  snapshots: number;
+}
+
+export interface DayEquipment {
+  class: string;
+  label: string;
+  sanctioned: number;
+  declared: number;
+  present_avg: number;
+  present_max: number;
+  in_use_avg: number;
+  in_use_pct: number;
+  status: string;
+}
+
+export interface DayFlag {
+  id: string;
+  type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: string;
+  reason: string;
+  created_at: string;
+  evidence_urls: string[];
+}
+
+export interface DayEvidence {
+  id: string;
+  ts: string;
+  kind: string;
+  url: string;
+}
+
+export interface CameraHealthEvent {
+  ts: string;
+  status: string;
+  reason: string;
+  camera_id: string;
+}
+
+export interface DayEvent {
+  ts: string;
+  kind: string;
+  text: string;
+}
+
+/** GET /centres/{id}/calendar/{date} */
+export interface CalendarDayDetail {
+  date: string;
+  summary: CalendarDay;
+  sessions: CalendarSession[];
+  timeline: { interval_s: number; points: TimelinePoint[] };
+  equipment: DayEquipment[];
+  flags: DayFlag[];
+  evidence: DayEvidence[];
+  camera_health: CameraHealthEvent[];
+  events: DayEvent[];
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   next_cursor?: string;

@@ -1,18 +1,31 @@
 import {
   AlertOctagon,
+  AlertTriangle,
+  CalendarOff,
   CheckCircle2,
   ChevronUp,
   ChevronsUp,
   Circle,
+  Clock,
   HelpCircle,
   Minus,
   Pause,
   Play,
+  Radio,
   Timer,
+  WifiOff,
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CENTRE_STATUS_LABEL, FLAG_STATUS_LABEL, FLAG_TYPES, SEVERITY, type Severity } from "@/lib/constants";
+import {
+  CENTRE_STATUS_LABEL,
+  DAY_STATUS,
+  FLAG_STATUS_LABEL,
+  FLAG_TYPES,
+  LIVE_STATE,
+  SEVERITY,
+  type Severity,
+} from "@/lib/constants";
 
 /* ---------- severity ---------- */
 
@@ -139,6 +152,86 @@ export function CameraStatusChip({ status, className }: { status: string; classN
     >
       <Icon className={cn("h-3 w-3", status === "online" && "live-dot")} aria-hidden />
       {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  );
+}
+
+/* ---------- live room state ---------- */
+
+export const LIVE_STATE_ICON = {
+  live: Radio,
+  idle: Pause,
+  offline: WifiOff,
+  tampered: AlertTriangle,
+  provisional: Clock,
+} as const;
+
+const LIVE_TONE: Record<string, string> = {
+  live: "text-success",
+  idle: "text-muted-foreground",
+  offline: "text-muted-foreground",
+  tampered: "text-warning",
+  provisional: "text-uncertain",
+};
+
+/** icon + label (never colour alone); "Live" carries the pulsing dot, setup pending is dashed. */
+export function LiveStateChip({ state, className }: { state: string; className?: string }) {
+  const known = state in LIVE_STATE;
+  const key = state as keyof typeof LIVE_STATE;
+  const Icon = known ? LIVE_STATE_ICON[key] : Circle;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1.5 rounded-full border border-current/30 bg-current/10 px-2 text-xs font-medium",
+        known ? LIVE_TONE[state] : "text-muted-foreground",
+        state === "provisional" && "border-dashed",
+        className
+      )}
+    >
+      {state === "live" && <span className="h-2 w-2 rounded-full bg-current live-dot" aria-hidden />}
+      <Icon className="h-3 w-3" aria-hidden />
+      {known ? LIVE_STATE[key].label : state}
+    </span>
+  );
+}
+
+/* ---------- calendar day status ---------- */
+
+export const DAY_STATUS_ICON = {
+  ok: CheckCircle2,
+  attention: AlertTriangle,
+  critical: AlertOctagon,
+  no_data: Minus,
+  holiday: CalendarOff,
+  upcoming: Clock,
+  none: Minus,
+} as const;
+
+const DAY_TONE: Record<string, string> = {
+  ok: "text-success",
+  attention: "text-warning",
+  critical: "text-danger",
+  no_data: "text-muted-foreground",
+  holiday: "text-info",
+  upcoming: "text-uncertain",
+  none: "text-muted-foreground",
+};
+
+/** icon + label for a calendar day status (never colour alone). */
+export function DayStatusChip({ status, className }: { status: string; className?: string }) {
+  const known = status in DAY_STATUS;
+  const key = status as keyof typeof DAY_STATUS;
+  const Icon = known ? DAY_STATUS_ICON[key] : Minus;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1.5 rounded-full border border-current/30 bg-current/10 px-2 text-xs font-medium",
+        known ? DAY_TONE[status] : "text-muted-foreground",
+        className
+      )}
+    >
+      <Icon className="h-3 w-3" aria-hidden />
+      {known ? DAY_STATUS[key].label : status}
     </span>
   );
 }

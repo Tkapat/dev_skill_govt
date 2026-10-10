@@ -25,6 +25,42 @@ export const SEVERITY = {
 
 export type Severity = keyof typeof SEVERITY;
 
+export const LIVE_STATE = {
+  live: { label: "Live", icon: "Radio", tone: "success" },
+  idle: { label: "Idle", icon: "Pause", tone: "muted" },
+  offline: { label: "Offline", icon: "WifiOff", tone: "muted" },
+  tampered: { label: "Camera problem", icon: "AlertTriangle", tone: "warning" },
+  provisional: { label: "Setup pending", icon: "Clock", tone: "uncertain" },
+} as const;
+
+export const ITEM_LABEL: Record<string, string> = {
+  person: "People",
+  chair: "Chair",
+  desk: "Desk",
+  monitor: "Monitor",
+  laptop: "Laptop",
+  keyboard: "Keyboard",
+  mouse: "Mouse",
+  "cell phone": "Phone",
+  book: "Book",
+  bottle: "Bottle",
+  bench: "Bench",
+  couch: "Couch",
+  "sewing machine": "Sewing machine",
+};
+
+export const DAY_STATUS = {
+  ok: { label: "OK", icon: "CheckCircle2", tone: "success" },
+  attention: { label: "Attention", icon: "AlertTriangle", tone: "warning" },
+  critical: { label: "Critical", icon: "AlertOctagon", tone: "danger" },
+  no_data: { label: "No data", icon: "Minus", tone: "muted" },
+  holiday: { label: "Holiday", icon: "CalendarOff", tone: "info" },
+  upcoming: { label: "Scheduled", icon: "Clock", tone: "uncertain" },
+  none: { label: "No session", icon: "Minus", tone: "muted" },
+} as const;
+
+export type DayStatus = keyof typeof DAY_STATUS;
+
 export const FLAG_STATUS_LABEL: Record<string, string> = {
   open: "Open",
   acknowledged: "Acknowledged",

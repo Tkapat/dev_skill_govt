@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
   Building2,
@@ -15,16 +16,19 @@ import {
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
+  Radio,
   ScrollText,
   Settings,
   Target,
   Users,
 } from "lucide-react";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { gsap, useGSAP, DUR, EASE, motionOk } from "@/lib/gsap";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import type { LiveFeed } from "@/types";
 
 interface NavItem {
   href: string;
@@ -37,6 +41,7 @@ const GROUPS: { items: NavItem[]; divider?: boolean }[] = [
   {
     items: [
       { href: "/overview", label: "Overview", icon: LayoutDashboard },
+      { href: "/live", label: "Live", icon: Radio },
       { href: "/applications", label: "Applications", icon: FileText },
       { href: "/centres", label: "Centres", icon: Building2 },
       { href: "/flags", label: "Flags", icon: Flag },
@@ -66,6 +71,18 @@ const GROUPS: { items: NavItem[]; divider?: boolean }[] = [
   },
 ];
 
+/** Rooms currently streaming — drives the small live dot on the "Live" nav item. */
+function useLiveRoomCount() {
+  const { data } = useQuery({
+    queryKey: ["live", "sidebar-count"],
+    queryFn: () => api<LiveFeed>("/live?limit=1"),
+    refetchInterval: 15_000,
+    staleTime: 15_000,
+    select: (d) => d.counts?.live ?? 0,
+  });
+  return data ?? 0;
+}
+
 interface NavListProps {
   /** inside the icon rail (desktop/tablet aside) labels collapse */
   rail?: boolean;
@@ -80,6 +97,7 @@ function NavList({ rail = false, collapsed = false, role, onNavigate, pathname =
   const listRef = React.useRef<HTMLUListElement>(null);
   const barRef = React.useRef<HTMLSpanElement>(null);
   const firstBar = React.useRef(true);
+  const liveCount = useLiveRoomCount();
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
@@ -134,6 +152,12 @@ function NavList({ rail = false, collapsed = false, role, onNavigate, pathname =
                 >
                   <Icon className="h-5 w-5 shrink-0" aria-hidden />
                   <span className={cn("truncate", hideLabels && "hidden")}>{item.label}</span>
+                  {item.href === "/live" && liveCount > 0 && (
+                    <span className={cn("ml-auto flex items-center", hideLabels && "ml-1")}>
+                      <span className="h-2 w-2 rounded-full bg-success live-dot" aria-hidden />
+                      <span className="sr-only">{liveCount} rooms live now</span>
+                    </span>
+                  )}
                 </Link>
               </li>
             );
