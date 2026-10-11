@@ -37,7 +37,7 @@ import {
   todayIST,
   ymd,
 } from "@/lib/calendar";
-import { DAY_STATUS } from "@/lib/constants";
+import { DAY_STATUS, sessionDisplayStatus } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import {
   DayStatusChip,
@@ -83,8 +83,10 @@ const TONE_TEXT: Record<string, string> = {
 const statusText = (status: string) =>
   TONE_TEXT[DAY_STATUS[status as keyof typeof DAY_STATUS]?.tone ?? "muted"] ?? "text-muted-foreground";
 
-const sessStatus = (state: string) =>
-  state === "active" || state === "running" ? "running" : state;
+const sessStatus = (s: { state: string; actual_start_ts?: string | null }) => {
+  const base = s.state === "active" || s.state === "running" ? "running" : s.state;
+  return sessionDisplayStatus(base, s.actual_start_ts);
+};
 
 function StatTile({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -230,7 +232,7 @@ function GridSkeleton() {
 }
 
 function SessionCard({ s }: { s: CalendarSession }) {
-  const status = sessStatus(s.state);
+  const status = sessStatus(s);
   return (
     <div className="space-y-2 rounded-lg border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">

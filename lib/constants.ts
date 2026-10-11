@@ -32,7 +32,52 @@ export const LIVE_STATE = {
   offline: { label: "Offline", icon: "WifiOff", tone: "muted" },
   tampered: { label: "Camera problem", icon: "AlertTriangle", tone: "warning" },
   provisional: { label: "Setup pending", icon: "Clock", tone: "uncertain" },
+  error: { label: "Detector error", icon: "AlertOctagon", tone: "danger" },
 } as const;
+
+export const SOURCE_KIND_LABEL: Record<string, string> = {
+  browser: "Browser",
+  rtsp: "RTSP",
+  webcam: "Server webcam",
+  file: "Sample video",
+};
+
+/** Neutral compliance verdict labels (people). */
+export const PEOPLE_VERDICT_LABEL: Record<string, string> = {
+  waiting: "Waiting for data",
+  match: "Matches",
+  inflated: "Attendance inflated",
+  over_capacity: "Over capacity",
+  unclaimed: "No claim submitted",
+  unverifiable: "Count unstable",
+  ghost: "Claimed but nobody seen",
+  unregistered: "More seen than claimed",
+};
+
+/** Neutral compliance verdict labels (equipment). */
+export const EQUIP_VERDICT_LABEL: Record<string, string> = {
+  waiting: "Waiting for data",
+  ok: "OK",
+  missing: "Missing",
+  declaration_mismatch: "Declaration differs",
+  non_operational: "Not operational",
+};
+
+export const COMPLIANCE_LEVEL_LABEL: Record<string, string> = {
+  waiting: "Waiting",
+  ok: "All matched",
+  attention: "Worth a look",
+  critical: "Needs your response",
+};
+
+/**
+ * A session is "Held" only when actual_start_ts exists. If the API returns
+ * closed without an actual start, defensively show "Not held".
+ */
+export function sessionDisplayStatus(status: string, actualStartTs?: string | null): string {
+  if (status === "closed" && !actualStartTs) return "missed";
+  return status;
+}
 
 export const ITEM_LABEL: Record<string, string> = {
   person: "People",

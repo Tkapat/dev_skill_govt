@@ -6,6 +6,7 @@ import { Ban, CalendarOff, ChevronLeft, ChevronRight, Clock } from "lucide-react
 import { api } from "@/lib/api";
 import { fmtDate, fmtDuration, formatTimeOnly } from "@/lib/format";
 import { isoDow, shiftDay, todayIST } from "@/lib/calendar";
+import { sessionDisplayStatus } from "@/lib/constants";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { SessionStatusChip } from "@/components/shared/StatusChip";
@@ -312,12 +313,13 @@ export function ScheduleTab({ cid }: { cid: string }) {
               ) : (
                 sessions.map((s) => {
                   const b = s.batch_id ? batchMap.get(s.batch_id) : null;
+                  const ds = sessionDisplayStatus(s.status === "active" ? "running" : s.status, s.actual_start_ts);
                   return (
                     <tr
                       key={s.id}
                       className={cn(
                         "border-b border-border/60 last:border-0",
-                        s.status === "missed" && "bg-danger-soft/40",
+                        ds === "missed" && "bg-danger-soft/40",
                         s.status === "cancelled" && "bg-muted/50"
                       )}
                     >
@@ -332,7 +334,7 @@ export function ScheduleTab({ cid }: { cid: string }) {
                         {formatTimeOnly(s.start_ts)} – {formatTimeOnly(s.end_ts)}
                       </td>
                       <td className="px-3 py-2">
-                        <SessionStatusChip status={s.status === "active" ? "running" : s.status} lineThrough />
+                        <SessionStatusChip status={ds} lineThrough />
                       </td>
                       <td className="tabular whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
                         {s.actual_start_ts || s.actual_end_ts ? (

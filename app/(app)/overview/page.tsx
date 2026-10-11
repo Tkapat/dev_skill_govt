@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Meter } from "@/components/ui/meter";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { todayIST } from "@/lib/calendar";
+import { cn } from "@/lib/utils";
 import type { Application, Camera as CameraT, Centre, Flag, LiveFeed, LiveStatus, SessionCounts, SessionListFeed } from "@/types";
 
 const MapComponent = dynamic(() => import("./MapComponent"), {
@@ -252,6 +253,101 @@ function TodaySessionsCard() {
   );
 }
 
+const SEV_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+function flagCategory(type: string): string {
+  if (type.startsWith("A")) return "Attendance";
+  if (type.startsWith("E")) return "Equipment";
+  if (type.startsWith("C")) return "Camera";
+  return "Sessions";
+}
+
+const CATEGORY_CHIP: Record<string, string> = {
+  Attendance: "border-danger/30 bg-danger/10 text-danger",
+  Equipment: "border-warning/30 bg-warning/10 text-warning",
+  Camera: "border-info/30 bg-info/10 text-info",
+  Sessions: "border-border bg-surface text-muted-foreground",
+};
+
+function ComplianceAlertsCard({ flags, centreById, loading }: { flags: Flag[]; centreById: Map<string, Centre>; loading: boolean }) {
+  const todayFlags = React.useMemo(() => {
+    return flags
+      .filter((f) => fmtDate(f.created_at) === fmtDate(new Date()))
+      .sort((a, b) => {
+        const r = (SEV_RANK[a.severity] ?? 4) - (SEV_RANK[b.severity] ?? 4);
+        if (r !== 0) return r;
+        return Date.parse(b.created_at) - Date.parse(a.created_at);
+      });
+  }, [flags]);
+
+  const counts: Record<string, number> = { Attendance: 0, Equipment: 0, Camera: 0, Sessions: 0 };
+  for (const f of todayFlags) counts[flagCategory(f.type)] += 1;
+  const shown = todayFlags.slice(0, 6);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle>Compliance alerts now</CardTitle>
+        <Link href="/flags" className="text-xs font-medium text-primary hover:underline">
+          View all flags
+        </Link>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {(Object.keys(counts) as string[]).map((cat) => (
+            <span
+              key={cat}
+              className={cn(
+                "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium",
+                CATEGORY_CHIP[cat]
+              )}
+            >
+              {cat}
+              <span className="tabular font-semibold">{counts[cat]}</span>
+            </span>
+          ))}
+        </div>
+        {loading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : shown.length === 0 ? (
+          <EmptyState
+            icon={FlagIcon}
+            title="No open alerts today"
+            hint="Open compliance flags raised today appear here, sorted by severity."
+          />
+        ) : (
+          <ul className="divide-y divide-border">
+            {shown.map((f) => {
+              const centre = centreById.get(f.centre_id);
+              return (
+                <li key={f.id}>
+                  <Link href={`/flags/${f.id}`} className="flex items-start gap-2.5 py-2.5 hover:bg-surface-hover">
+                    <SeverityDot severity={f.severity} withLabel={false} className="mt-1.5 shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-medium">{f.type}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {centre ? `${centre.code} — ${centre.name}` : "—"}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{f.reason}</span>
+                    </span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{timeAgo(f.created_at)}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function OverviewPage() {
   const centresQ = useQuery({
     queryKey: ["centres", "all"],
@@ -376,6 +472,9 @@ export default function OverviewPage() {
 
         {/* Today's sessions */}
         <TodaySessionsCard />
+
+        {/* Compliance alerts now */}
+        <ComplianceAlertsCard flags={openFlags} centreById={centreById} loading={isLoading} />
 
         {/* Latest flags */}
         <Card>

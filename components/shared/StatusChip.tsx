@@ -169,6 +169,7 @@ export const LIVE_STATE_ICON = {
   offline: WifiOff,
   tampered: AlertTriangle,
   provisional: Clock,
+  error: AlertOctagon,
 } as const;
 
 const LIVE_TONE: Record<string, string> = {
@@ -177,6 +178,7 @@ const LIVE_TONE: Record<string, string> = {
   offline: "text-muted-foreground",
   tampered: "text-warning",
   provisional: "text-uncertain",
+  error: "text-danger",
 };
 
 /** icon + label (never colour alone); "Live" carries the pulsing dot, setup pending is dashed. */

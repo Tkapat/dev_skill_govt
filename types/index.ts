@@ -133,6 +133,7 @@ export interface Camera {
   centre_id: string;
   name: string;
   source_uri: string;
+  source_kind?: string;
   resolution?: string;
   roi_polygon?: number[][];
   zones?: { name: string; polygon: number[][] }[];
@@ -363,7 +364,7 @@ export interface Notice {
   created_at: string;
 }
 
-export type LiveState = "live" | "idle" | "offline" | "tampered" | "provisional";
+export type LiveState = "live" | "idle" | "offline" | "tampered" | "provisional" | "error";
 
 export interface LiveCounts {
   live: number;
@@ -371,6 +372,7 @@ export interface LiveCounts {
   offline: number;
   tampered: number;
   provisional: number;
+  error?: number;
 }
 
 export interface LiveItem {
@@ -383,11 +385,13 @@ export interface LiveItem {
 export interface LiveStatus {
   camera_id: string;
   camera_name: string;
+  source_kind?: string | null;
   centre_id: string;
   centre_code: string;
   centre_name: string;
   district: string;
   state: LiveState;
+  error?: string | null;
   ts: string;
   age_s?: number | null;
   interval_s: number;
@@ -403,6 +407,8 @@ export interface LiveStatus {
   thumb_url?: string | null;
   spark: number[];
   model_version?: string | null;
+  data_official?: boolean;
+  compliance_summary?: { level: string; headline: string; verdict?: string } | null;
 }
 
 export interface LiveFeed {
@@ -583,4 +589,56 @@ export interface ApplicationListParams {
   q?: string;
   limit?: number;
   cursor?: string;
+}
+
+/* ---------- compliance contract ---------- */
+
+export interface CompliancePeople {
+  enrolled: number;
+  sanctioned_max: number;
+  claimed: number | null;
+  counted: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+  state: "ok" | "uncertain" | "no_data";
+  delta: number | null;
+  margin: number | null;
+  verdict: string;
+  text: string;
+}
+
+export interface ComplianceEquipment {
+  class: string;
+  label: string;
+  sanctioned: number;
+  declared: number;
+  seen: number | null;
+  seen_max: number | null;
+  in_use: number | null;
+  idle: number | null;
+  off: number | null;
+  in_use_pct: number | null;
+  verdict: string;
+  text: string;
+}
+
+export interface ComplianceFlag {
+  id: string;
+  type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: string;
+  reason: string;
+  created_at: string;
+}
+
+/** GET /centres/{id}/compliance and GET /my/compliance */
+export interface ComplianceResponse {
+  session: Session | null;
+  as_of: string;
+  snapshots: number;
+  window: number;
+  people: CompliancePeople;
+  equipment: ComplianceEquipment[];
+  flags: ComplianceFlag[];
+  summary: { level: "waiting" | "ok" | "attention" | "critical"; headline: string };
 }

@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Camera, LayoutGrid, Radio, Search, Table2, Users, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtIST, fmtNum, formatTimeOnly, timeAgo } from "@/lib/format";
-import { ITEM_LABEL, LIVE_STATE } from "@/lib/constants";
+import { ITEM_LABEL, LIVE_STATE, PEOPLE_VERDICT_LABEL } from "@/lib/constants";
 import { useCountUp } from "@/lib/motion";
 import { gsap, useGSAP, motionOk, DUR, EASE } from "@/lib/gsap";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,6 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { LiveStateChip, LIVE_STATE_ICON } from "@/components/shared/StatusChip";
 import { LiveElapsedLabel } from "@/components/shared/ElapsedTimer";
 import { Sparkline } from "@/components/shared/Sparkline";
-import { SignedImage } from "@/components/shared/SignedImage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,13 +28,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { LiveFeed, LiveState, LiveStatus } from "@/types";
 
-const STATES: LiveState[] = ["live", "idle", "offline", "tampered", "provisional"];
+const STATES: LiveState[] = ["live", "idle", "offline", "tampered", "provisional", "error"];
 const COUNT_LABEL: Record<LiveState, string> = {
   live: "Live",
   idle: "Idle",
   offline: "Offline",
   tampered: "Camera problem",
   provisional: "Setup pending",
+  error: "Detector error",
 };
 const MAX_ITEM_CHIPS = 4;
 const SCREEN_CLASSES = new Set(["monitor", "laptop"]);
@@ -88,20 +88,10 @@ function LiveDataCard({ room, fetchedAt }: { room: LiveStatus; fetchedAt: number
   const badQuality = room.quality && !room.quality.ok && (room.quality.reasons?.length ?? 0) > 0;
   const started = room.session?.actual_start_ts ?? room.run_started_at ?? null;
   const claimedDelta = room.claimed != null && room.people != null ? room.claimed - room.people : null;
+  const cs = room.compliance_summary;
 
   return (
     <Card className="card-hover relative h-full overflow-hidden">
-      {/* image only when the server sent a thumb; never reserve empty image space */}
-      {room.thumb_url && (
-        <div className="relative aspect-video bg-surface-2">
-          <SignedImage
-            url={room.thumb_url}
-            alt={`${room.camera_name} thumbnail`}
-            className={cn("h-full w-full rounded-none", !live && "opacity-60")}
-          />
-        </div>
-      )}
-
       <CardContent className="space-y-3 p-4">
         {/* Row 1: state chip + camera · right: elapsed / last seen / waiting */}
         <div className="flex items-center justify-between gap-2">
@@ -142,6 +132,26 @@ function LiveDataCard({ room, fetchedAt }: { room: LiveStatus; fetchedAt: number
           </span>
           {room.spark?.length > 1 && <Sparkline data={room.spark} className="h-8 w-24 shrink-0" />}
         </div>
+
+        {/* Row 2b: compliance verdict chip */}
+        {cs && (
+          <p
+            className={cn(
+              "inline-flex h-6 w-fit items-center rounded-full border px-2 text-xs font-medium",
+              cs.verdict === "match"
+                ? "border-success/40 bg-success/10 text-success"
+                : cs.verdict === "waiting"
+                  ? "border-warning/40 bg-warning/10 text-warning"
+                  : cs.verdict === "unclaimed" || cs.verdict === "unverifiable" || cs.verdict === "unregistered"
+                    ? "border-info/40 bg-info/10 text-info"
+                    : "border-danger/40 bg-danger/10 text-danger"
+            )}
+            title={cs.headline}
+          >
+            Claimed {fmtNum(room.claimed ?? 0)} / Counted {fmtNum(room.people ?? 0)} -{" "}
+            {PEOPLE_VERDICT_LABEL[cs.verdict ?? "waiting"] ?? cs.headline}
+          </p>
+        )}
 
         {/* Row 3: claimed vs counted two-bar */}
         {room.claimed != null && (

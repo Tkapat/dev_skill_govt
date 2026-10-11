@@ -7,7 +7,7 @@ import { Ban, CalendarDays, ChevronLeft, ChevronRight, Inbox, Radio, Search, X }
 import { api } from "@/lib/api";
 import { fmtDate, fmtDuration, formatTimeOnly } from "@/lib/format";
 import { isYmd, shiftDay, todayIST } from "@/lib/calendar";
-import { SESSION_KIND } from "@/lib/constants";
+import { SESSION_KIND, sessionDisplayStatus } from "@/lib/constants";
 import { useDebounced } from "@/hooks/useDebounced";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -184,14 +183,7 @@ export default function SessionsPage() {
             <span className="text-[11px] text-muted-foreground">No camera data</span>
           )}
           {s.status === "cancelled" && s.cancel_reason && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="text-[11px] text-muted-foreground underline decoration-dotted">
-                  {s.cancel_reason}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{s.cancel_reason}</TooltipContent>
-            </Tooltip>
+            <span className="text-[11px] text-muted-foreground">{s.cancel_reason}</span>
           )}
         </span>
       ),
@@ -205,7 +197,7 @@ export default function SessionsPage() {
         </span>
       ),
     },
-    { key: "status", header: "Status", render: (s) => <SessionStatusChip status={s.status} lineThrough /> },
+    { key: "status", header: "Status", render: (s) => <SessionStatusChip status={sessionDisplayStatus(s.status, s.actual_start_ts)} lineThrough /> },
     {
       key: "started",
       header: "Started",

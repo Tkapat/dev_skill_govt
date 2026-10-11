@@ -7,6 +7,7 @@ import { Camera as CameraIcon, CheckCircle2, Eye, EyeOff, XCircle } from "lucide
 import { api } from "@/lib/api";
 import { fmtIST, timeAgo } from "@/lib/format";
 import { getErrorMessage } from "@/lib/strings";
+import { SOURCE_KIND_LABEL } from "@/lib/constants";
 import { useMe } from "@/hooks/useMe";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -14,6 +15,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { KpiCard, KpiRowSkeleton } from "@/components/shared/KpiCard";
 import { CameraStatusChip, DecisionChip } from "@/components/shared/StatusChip";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,6 +99,18 @@ export default function CamerasPage() {
 
   const columns: DataTableColumn<Camera>[] = [
     { key: "name", header: "Camera", render: (c) => <span className="font-medium">{c.name}</span> },
+    {
+      key: "kind",
+      header: "Kind",
+      render: (c) =>
+        c.source_kind ? (
+          <Badge variant="secondary" className="font-mono text-[10px]">
+            {SOURCE_KIND_LABEL[c.source_kind] ?? c.source_kind}
+          </Badge>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
     {
       key: "centre",
       header: "Centre",

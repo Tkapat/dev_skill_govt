@@ -14,20 +14,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { CalendarDays, Radio } from "lucide-react";
+import { AlertOctagon, CalendarDays, Radio } from "lucide-react";
 import { api } from "@/lib/api";
-import { fmtIST, fmtNum, formatTimeOnly, timeAgo } from "@/lib/format";
-import { ITEM_LABEL, LIVE_STATE } from "@/lib/constants";
+import { fmtNum, formatTimeOnly, timeAgo } from "@/lib/format";
+import { ITEM_LABEL, SOURCE_KIND_LABEL } from "@/lib/constants";
 import { todayIST } from "@/lib/calendar";
 import { useCountUp } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { ChartCard } from "@/components/shared/ChartCard";
+import { ComplianceBoard } from "@/components/shared/ComplianceBoard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { LiveStateChip, SessionStatusChip, SeverityDot } from "@/components/shared/StatusChip";
 import { RunList } from "@/components/shared/RunList";
 import { LiveElapsedLabel } from "@/components/shared/ElapsedTimer";
-import { SignedImage } from "@/components/shared/SignedImage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,8 +36,20 @@ import type { CentreLiveFeed, CentreSchedule, LiveStatus, RunRow } from "@/types
 const SERIES_COLOR = ["var(--primary)", "var(--info)", "var(--warning)"];
 const MAX_SERIES = 3;
 
-const stateLabel = (s: string) => (s in LIVE_STATE ? LIVE_STATE[s as keyof typeof LIVE_STATE].label : s);
 const itemLabel = (cls: string) => ITEM_LABEL[cls] ?? cls.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+const kindLabel = (kind?: string | null) => (kind ? (SOURCE_KIND_LABEL[kind] ?? kind) : null);
+
+/** De-duplicate camera rows by camera_id (first wins). */
+function dedupeCams(items: LiveStatus[]): LiveStatus[] {
+  const seen = new Set<string>();
+  const out: LiveStatus[] = [];
+  for (const c of items) {
+    if (seen.has(c.camera_id)) continue;
+    seen.add(c.camera_id);
+    out.push(c);
+  }
+  return out;
+}
 
 function UsageBar({ pct }: { pct: number }) {
   return (
@@ -50,18 +62,42 @@ function UsageBar({ pct }: { pct: number }) {
   );
 }
 
+function UnofficialChip({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 shrink-0 items-center rounded-full border border-dashed border-uncertain/50 bg-uncertain/10 px-1.5 text-[10px] font-medium text-uncertain",
+        className
+      )}
+    >
+      Unofficial
+    </span>
+  );
+}
+
 function RightNowCard({ cam, fetchedAt }: { cam: LiveStatus; fetchedAt: number }) {
   const peopleRef = useCountUp(cam.people ?? 0);
   const entries = Object.entries(cam.items ?? {});
   const started = cam.session?.actual_start_ts ?? cam.run_started_at ?? null;
+  const provisional = cam.state === "provisional";
+  const isError = cam.state === "error";
 
   return (
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle>Right now</CardTitle>
-        <LiveStateChip state={cam.state} />
+        <span className="flex items-center gap-2">
+          {provisional && <UnofficialChip />}
+          <LiveStateChip state={cam.state} />
+        </span>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isError && (
+          <p className="flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/10 p-2.5 text-xs text-danger">
+            <AlertOctagon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>{cam.error || "The counting model reported an error. Frames are not being processed."}</span>
+          </p>
+        )}
         <div>
           <span className="flex items-baseline gap-1.5">
             <span
@@ -69,10 +105,12 @@ function RightNowCard({ cam, fetchedAt }: { cam: LiveStatus; fetchedAt: number }
               className="tabular text-[36px] font-semibold leading-9"
             />
             <span className="text-xs text-muted-foreground">people in the room</span>
+            {provisional && <UnofficialChip className="ml-1" />}
           </span>
           {cam.claimed != null && (
             <p className="tabular mt-1 text-xs text-muted-foreground">
               Claimed {fmtNum(cam.claimed)} / Camera saw {fmtNum(cam.people ?? 0)}
+              {provisional && " (unofficial)"}
             </p>
           )}
           <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -182,7 +220,7 @@ function TodayMonitoringCard({ cid, today }: { cid: string; today: string }) {
                   {sessions.map((s) => (
                     <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 p-2.5 text-xs">
                       <SessionStatusChip
-                        status={s.status === "active" ? "running" : s.status}
+                        status={s.status === "active" ? "running" : s.status === "closed" && !s.actual_start_ts ? "missed" : s.status}
                         lineThrough
                         className="shrink-0"
                       />
@@ -220,7 +258,7 @@ export function LiveTab({ cid, onOpenToday }: { cid: string; onOpenToday: () => 
     staleTime: 5000,
   });
 
-  const cams = q.data?.items ?? [];
+  const cams = React.useMemo(() => dedupeCams(q.data?.items ?? []), [q.data]);
   const [camId, setCamId] = React.useState<string | null>(null);
   const cam = cams.find((c) => c.camera_id === camId) ?? cams[0] ?? null;
 
@@ -283,68 +321,50 @@ export function LiveTab({ cid, onOpenToday }: { cid: string; onOpenToday: () => 
     );
   }
 
-  const live = cam.state === "live";
+  const provisional = cam.state === "provisional";
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-3 lg:col-span-2">
-          <Card>
-            <CardContent className="space-y-3 p-4">
-              {cams.length > 1 && (
-                <div className="flex flex-wrap gap-1 rounded-lg border p-1" role="group" aria-label="Switch camera">
-                  {cams.map((c) => (
-                    <button
-                      key={c.camera_id}
-                      type="button"
-                      onClick={() => setCamId(c.camera_id)}
-                      aria-pressed={c.camera_id === cam.camera_id}
-                      className={cn(
-                        "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
-                        c.camera_id === cam.camera_id
-                          ? "bg-accent-soft text-primary"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      <span
-                        className={cn("h-1.5 w-1.5 rounded-full", c.state === "live" ? "bg-success live-dot" : "bg-muted-foreground")}
-                        aria-hidden
-                      />
-                      {c.camera_name}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="relative aspect-video overflow-hidden rounded-lg border bg-surface-2">
-                <SignedImage
-                  url={cam.thumb_url}
-                  alt={`${cam.camera_name} latest frame`}
-                  className={cn("h-full w-full rounded-none", !live && "opacity-60")}
-                />
-                <span className="absolute left-2 top-2 z-10">
-                  <LiveStateChip state={cam.state} className="bg-background/85" />
-                </span>
-                <span
-                  className="tabular absolute right-2 top-2 z-10 rounded-full border bg-background/85 px-2 py-0.5 text-xs text-muted-foreground"
-                  title={fmtIST(cam.ts)}
-                >
-                  {timeAgo(cam.ts)}
-                </span>
-                {!live && (
-                  <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-                    <span className="rounded-full border bg-background/90 px-3 py-0.5 text-xs font-medium shadow-sm">
-                      {stateLabel(cam.state)}
-                    </span>
-                  </span>
+      {/* Camera tabs (de-duplicated, labelled "name (kind)") */}
+      {cams.length > 1 && (
+        <div className="flex flex-wrap gap-1 rounded-lg border p-1" role="group" aria-label="Switch camera">
+          {cams.map((c) => {
+            const kind = kindLabel(c.source_kind);
+            return (
+              <button
+                key={c.camera_id}
+                type="button"
+                onClick={() => setCamId(c.camera_id)}
+                aria-pressed={c.camera_id === cam.camera_id}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+                  c.camera_id === cam.camera_id
+                    ? "bg-accent-soft text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {cam.camera_name} · refreshes every 5 s · cameras count people anonymously
-              </p>
-            </CardContent>
-          </Card>
+              >
+                <span
+                  className={cn("h-1.5 w-1.5 rounded-full", c.state === "live" ? "bg-success live-dot" : "bg-muted-foreground")}
+                  aria-hidden
+                />
+                {c.camera_name}
+                {kind && <span className="text-[10px] opacity-70">({kind})</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
+      {/* Provisional thin banner */}
+      {provisional && (
+        <p className="rounded-lg border border-dashed border-uncertain/40 bg-uncertain/5 px-3 py-2 text-xs text-uncertain">
+          This camera is not approved yet. Numbers are shown for review and are marked unofficial.
+        </p>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <ComplianceBoard cid={cid} pollMs={5000} />
           <RightNowCard cam={cam} fetchedAt={q.dataUpdatedAt} />
         </div>
 
