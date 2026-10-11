@@ -193,13 +193,103 @@ export interface Staff {
 export interface Session {
   id: string;
   centre_id: string;
-  batch_id: string;
+  batch_id?: string | null;
+  label?: string | null;
+  kind?: "scheduled" | "oneoff" | "adhoc";
   session_date: string;
   start_ts: string;
   end_ts: string;
-  status: "scheduled" | "active" | "closed" | "missed";
-  planned_captures: number;
-  done_captures: number;
+  status: "scheduled" | "active" | "closed" | "missed" | "cancelled";
+  cancel_reason?: string | null;
+  actual_start_ts?: string | null;
+  actual_end_ts?: string | null;
+  planned_captures?: number;
+  done_captures?: number;
+  monitored_s?: number | null;
+  late_start_s?: number | null;
+  early_end_s?: number | null;
+  coverage_pct?: number | null;
+  claimed?: number | null;
+  observed?: number | null;
+  delta?: number | null;
+}
+
+/** Row shape from GET /sessions (govt sessions board) */
+export interface SessionRow {
+  id: string;
+  centre_id: string;
+  centre_code: string | null;
+  centre_name: string | null;
+  district: string | null;
+  label: string | null;
+  batch: string | null;
+  kind: "scheduled" | "oneoff" | "adhoc" | null;
+  session_date: string;
+  start_ts: string;
+  end_ts: string;
+  scheduled_s: number;
+  status: "scheduled" | "running" | "closed" | "missed" | "cancelled";
+  cancel_reason?: string | null;
+  actual_start_ts?: string | null;
+  actual_end_ts?: string | null;
+  monitored_s?: number | null;
+  late_start_s?: number | null;
+  early_end_s?: number | null;
+  coverage_pct?: number | null;
+  claimed?: number | null;
+  observed?: number | null;
+  delta?: number | null;
+}
+
+export interface SessionCounts {
+  scheduled: number;
+  running: number;
+  held: number;
+  missed: number;
+  cancelled: number;
+}
+
+export interface SessionListFeed {
+  items: SessionRow[];
+  next_cursor: string | null;
+  counts: SessionCounts;
+  date: string;
+}
+
+export interface RunRow {
+  id: string;
+  camera_id: string;
+  camera_name?: string | null;
+  started_at: string;
+  ended_at?: string | null;
+  end_reason?: "manual" | "timeout" | "session_end" | "error" | "system" | null;
+  by: "user" | "system";
+  by_name?: string | null;
+  frames_ok?: number | null;
+  frames_bad?: number | null;
+  duration_s?: number | null;
+}
+
+/** GET /sessions/{id} */
+export interface SessionDetail extends SessionRow {
+  runs: RunRow[];
+  summary?: {
+    claimed?: number | null;
+    observed?: number | null;
+    delta?: number | null;
+    ci_low?: number | null;
+    ci_high?: number | null;
+    staff_verified?: boolean | null;
+    snapshots?: number | null;
+  } | null;
+}
+
+/** GET /centres/{id}/schedule */
+export interface CentreSchedule {
+  batches: Batch[];
+  sessions: Session[];
+  holidays: { id?: string; holiday_date: string; name?: string }[];
+  changes: { ts: string; actor_name?: string | null; action?: string | null; entity?: string | null; text?: string | null }[];
 }
 
 export interface AttendanceClaim {
@@ -299,16 +389,20 @@ export interface LiveStatus {
   district: string;
   state: LiveState;
   ts: string;
+  age_s?: number | null;
   interval_s: number;
-  session: { id: string; label: string; start_ts: string; end_ts: string } | null;
-  people: number;
-  people_smooth: number;
+  session: { id: string; label: string; start_ts: string; end_ts: string; actual_start_ts?: string | null } | null;
+  run_started_at?: string | null;
+  elapsed_s?: number | null;
+  people: number | null;
+  people_smooth: number | null;
   claimed: number | null;
   items: Record<string, LiveItem>;
-  quality: { ok: boolean; reasons: string[] };
-  thumb_url: string;
+  labels?: Record<string, string>;
+  quality: { ok: boolean; reasons: string[] } | null;
+  thumb_url?: string | null;
   spark: number[];
-  model_version: string;
+  model_version?: string | null;
 }
 
 export interface LiveFeed {
@@ -320,6 +414,9 @@ export type CalendarDayStatus =
   | "ok"
   | "attention"
   | "critical"
+  | "missed"
+  | "partial"
+  | "cancelled"
   | "no_data"
   | "holiday"
   | "upcoming"
@@ -362,6 +459,9 @@ export interface CalendarDay {
   snapshots: number;
   updates: number;
   sessions: number;
+  sessions_held?: number;
+  sessions_missed?: number;
+  sessions_cancelled?: number;
   people_max: number | null;
   people_avg: number | null;
   claimed: number | null;
@@ -369,6 +469,8 @@ export interface CalendarDay {
   delta: number | null;
   flags: CalendarDayFlags | null;
   uptime_pct: number | null;
+  monitored_min?: number;
+  scheduled_min?: number;
   in_use_pct: number | null;
 }
 
@@ -379,6 +481,12 @@ export interface CalendarSession {
   start_ts: string;
   end_ts: string;
   state: string;
+  cancel_reason?: string | null;
+  actual_start_ts?: string | null;
+  actual_end_ts?: string | null;
+  monitored_s?: number | null;
+  coverage_pct?: number | null;
+  late_start_s?: number | null;
   claimed: number | null;
   observed: number | null;
   ci_low: number | null;
@@ -386,6 +494,7 @@ export interface CalendarSession {
   delta: number | null;
   staff_verified: boolean | null;
   snapshots: number;
+  runs?: RunRow[];
 }
 
 export interface DayEquipment {

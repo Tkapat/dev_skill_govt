@@ -177,62 +177,66 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="cur">Current password</Label>
-              <Input
-                id="cur"
-                type="password"
-                autoComplete="current-password"
-                value={current}
-                onChange={(e) => setCurrent(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new">New password</Label>
-              <Input
-                id="new"
-                type="password"
-                autoComplete="new-password"
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
-              />
-              {next && <Meter value={strength} max={4} label="Strength" showValue={false} threshold={{ warning: 0.5, danger: 0.3 }} />}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="conf">Confirm new password</Label>
-              <Input
-                id="conf"
-                type="password"
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-              {confirm && confirm !== next && (
-                <p className="text-xs text-danger">Passwords do not match.</p>
-              )}
-            </div>
-            <ul className="grid gap-1.5 sm:grid-cols-2">
-              {RULES.map((r) => {
-                const ok = r.test(next);
-                return (
-                  <li
-                    key={r.id}
-                    className={`flex items-center gap-1.5 text-xs ${ok ? "text-success" : "text-muted-foreground"}`}
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                    {r.label}
-                  </li>
-                );
-              })}
-            </ul>
-            <Button
-              className="w-full"
-              disabled={!canSubmit}
-              loading={changePw.isPending}
-              onClick={() => changePw.mutate()}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (canSubmit) changePw.mutate();
+              }}
+              className="space-y-4"
+              noValidate
             >
-              Update password
-            </Button>
+              <div className="space-y-2">
+                <Label htmlFor="cur">Current password</Label>
+                <Input
+                  id="cur"
+                  type="password"
+                  autoComplete="current-password"
+                  value={current}
+                  onChange={(e) => setCurrent(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new">New password</Label>
+                <Input
+                  id="new"
+                  type="password"
+                  autoComplete="new-password"
+                  value={next}
+                  onChange={(e) => setNext(e.target.value)}
+                />
+                {next && <Meter value={strength} max={4} label="Strength" showValue={false} threshold={{ warning: 0.5, danger: 0.3 }} />}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="conf">Confirm new password</Label>
+                <Input
+                  id="conf"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
+                {confirm && confirm !== next && (
+                  <p className="text-xs text-danger">Passwords do not match.</p>
+                )}
+              </div>
+              <ul className="grid gap-1.5 sm:grid-cols-2">
+                {RULES.map((r) => {
+                  const ok = r.test(next);
+                  return (
+                    <li
+                      key={r.id}
+                      className={`flex items-center gap-1.5 text-xs ${ok ? "text-success" : "text-muted-foreground"}`}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                      {r.label}
+                    </li>
+                  );
+                })}
+              </ul>
+              <Button type="submit" className="w-full" disabled={!canSubmit} loading={changePw.isPending}>
+                Update password
+              </Button>
+            </form>
           </CardContent>
         </Card>
 

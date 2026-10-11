@@ -4,11 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Camera, LayoutGrid, Radio, Search, Table2, X } from "lucide-react";
+import { AlertTriangle, Camera, LayoutGrid, Radio, Search, Table2, Users, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { fmtIST, fmtNum, timeAgo } from "@/lib/format";
+import { fmtIST, fmtNum, formatTimeOnly, timeAgo } from "@/lib/format";
 import { ITEM_LABEL, LIVE_STATE } from "@/lib/constants";
 import { useCountUp } from "@/lib/motion";
+import { gsap, useGSAP, motionOk, DUR, EASE } from "@/lib/gsap";
 import { cn } from "@/lib/utils";
 import { useDebounced } from "@/hooks/useDebounced";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -16,11 +17,14 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { LiveStateChip, LIVE_STATE_ICON } from "@/components/shared/StatusChip";
+import { LiveElapsedLabel } from "@/components/shared/ElapsedTimer";
+import { Sparkline } from "@/components/shared/Sparkline";
 import { SignedImage } from "@/components/shared/SignedImage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { LiveFeed, LiveState, LiveStatus } from "@/types";
@@ -30,81 +34,180 @@ const COUNT_LABEL: Record<LiveState, string> = {
   live: "Live",
   idle: "Idle",
   offline: "Offline",
-  tampered: "Tampered",
+  tampered: "Camera problem",
   provisional: "Setup pending",
 };
 const MAX_ITEM_CHIPS = 4;
+const SCREEN_CLASSES = new Set(["monitor", "laptop"]);
 
 const stateLabel = (s: string) => (s in LIVE_STATE ? LIVE_STATE[s as LiveState].label : s);
 
 const itemLabel = (cls: string) => ITEM_LABEL[cls] ?? cls.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 
-function LiveRoomCard({ room }: { room: LiveStatus }) {
+/** 4 px usage bar: success >= 90 %, warning 60–89 %, danger < 60 % of present items in use. */
+function UsageBar({ inUse, present }: { inUse: number; present: number }) {
+  const pct = present > 0 ? (inUse / present) * 100 : 0;
+  return (
+    <span className="relative block h-1 w-full overflow-hidden rounded-full bg-surface-2" aria-hidden>
+      <span
+        className={cn("block h-full rounded-full", pct >= 90 ? "bg-success" : pct >= 60 ? "bg-warning" : "bg-danger")}
+        style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+      />
+    </span>
+  );
+}
+
+function EquipmentMiniTile({ cls, v }: { cls: string; v: { present: number; in_use: number; idle: number; off: number } }) {
+  const verb = SCREEN_CLASSES.has(cls) ? "on" : "in use";
+  return (
+    <span className="flex min-w-0 flex-col gap-1 rounded-lg border bg-surface p-2">
+      <span className="flex items-center justify-between gap-1">
+        <span className="truncate text-xs font-medium">{itemLabel(cls)}</span>
+        {v.off > 0 && (
+          <span className="tabular shrink-0 rounded-full border border-warning/30 bg-warning/10 px-1 text-[10px] font-medium text-warning">
+            {v.off} off
+          </span>
+        )}
+      </span>
+      <span className="tabular text-xs text-muted-foreground">
+        {v.in_use} / {v.present} {verb}
+      </span>
+      <UsageBar inUse={v.in_use} present={v.present} />
+    </span>
+  );
+}
+
+function LiveDataCard({ room, fetchedAt }: { room: LiveStatus; fetchedAt: number }) {
   const peopleRef = useCountUp(room.people ?? 0);
   const live = room.state === "live";
-  const items = Object.entries(room.items ?? {}).filter(([, v]) => v.present > 0);
+  const idle = room.state === "idle";
+  const offline = room.state === "offline";
+  const items = Object.entries(room.items ?? {}).filter(([cls, v]) => cls !== "person" && v.present > 0);
   const visible = items.slice(0, MAX_ITEM_CHIPS);
-  const extra = items.length - visible.length;
-  const badQuality = !room.quality?.ok && (room.quality?.reasons?.length ?? 0) > 0;
+  const extra = items.slice(MAX_ITEM_CHIPS);
+  const badQuality = room.quality && !room.quality.ok && (room.quality.reasons?.length ?? 0) > 0;
+  const started = room.session?.actual_start_ts ?? room.run_started_at ?? null;
+  const claimedDelta = room.claimed != null && room.people != null ? room.claimed - room.people : null;
 
   return (
     <Card className="card-hover relative h-full overflow-hidden">
-      <div className="relative aspect-video bg-surface-2">
-        <SignedImage
-          url={room.thumb_url}
-          alt={`${room.camera_name} thumbnail`}
-          className={cn("h-full w-full rounded-none", !live && "opacity-60")}
-        />
-        <span className="absolute left-2 top-2 z-10">
-          <LiveStateChip state={room.state} />
-        </span>
-        {!live && (
-          <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-            <span className="rounded-full border bg-background/90 px-3 py-0.5 text-xs font-medium shadow-sm">
-              {stateLabel(room.state)}
-            </span>
-          </span>
-        )}
-      </div>
+      {/* image only when the server sent a thumb; never reserve empty image space */}
+      {room.thumb_url && (
+        <div className="relative aspect-video bg-surface-2">
+          <SignedImage
+            url={room.thumb_url}
+            alt={`${room.camera_name} thumbnail`}
+            className={cn("h-full w-full rounded-none", !live && "opacity-60")}
+          />
+        </div>
+      )}
 
       <CardContent className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="truncate font-medium">{room.camera_name}</span>
-          <span className="shrink-0 text-muted-foreground">{room.district}</span>
+        {/* Row 1: state chip + camera · right: elapsed / last seen / waiting */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-2">
+            <LiveStateChip state={room.state} className="shrink-0" />
+            <span className="truncate text-xs text-muted-foreground">{room.camera_name}</span>
+          </span>
+          {live ? (
+            <LiveElapsedLabel
+              serverSeconds={room.elapsed_s}
+              fetchedAt={fetchedAt}
+              className="shrink-0 text-xs text-muted-foreground"
+            />
+          ) : offline ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="shrink-0 text-xs text-muted-foreground">Last seen {timeAgo(room.ts)}</span>
+                </TooltipTrigger>
+                <TooltipContent>{fmtIST(room.ts)}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : idle ? (
+            <span className="shrink-0 text-xs text-muted-foreground">Waiting for session</span>
+          ) : (
+            <span className="shrink-0 text-xs text-muted-foreground">{stateLabel(room.state)}</span>
+          )}
         </div>
 
-        <span className="flex items-baseline gap-1.5">
-          <span
-            ref={peopleRef as React.RefObject<HTMLSpanElement>}
-            className="tabular text-[28px] font-semibold leading-8"
-          />
-          <span className="text-xs text-muted-foreground">people</span>
-        </span>
+        {/* Row 2: People number + sparkline */}
+        <div className="flex items-end justify-between gap-2">
+          <span className="flex items-baseline gap-1.5">
+            <span
+              ref={peopleRef as React.RefObject<HTMLSpanElement>}
+              className="tabular text-[36px] font-semibold leading-9"
+            />
+            <span className="text-xs text-muted-foreground">people</span>
+          </span>
+          {room.spark?.length > 1 && <Sparkline data={room.spark} className="h-8 w-24 shrink-0" />}
+        </div>
 
+        {/* Row 3: claimed vs counted two-bar */}
         {room.claimed != null && (
-          <p className="tabular text-xs text-muted-foreground">
-            Claimed {fmtNum(room.claimed)} / Camera saw {fmtNum(room.people ?? 0)}
-          </p>
+          <div className="space-y-1">
+            <p className="tabular text-sm">
+              <span className="text-muted-foreground">Claimed </span>
+              <span className="font-semibold">{fmtNum(room.claimed)}</span>
+              <span className="text-muted-foreground"> / Camera counted </span>
+              <span className="font-semibold">{fmtNum(room.people ?? 0)}</span>
+            </p>
+            <div className="flex h-1 gap-0.5 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+              <span
+                className="h-full bg-primary"
+                style={{
+                  width: `${(() => {
+                    const max = Math.max(room.claimed ?? 0, room.people ?? 0, 1);
+                    return Math.round(((room.claimed ?? 0) / max) * 100);
+                  })()}%`,
+                }}
+              />
+              <span
+                className="h-full bg-foreground"
+                style={{
+                  width: `${(() => {
+                    const max = Math.max(room.claimed ?? 0, room.people ?? 0, 1);
+                    return Math.round(((room.people ?? 0) / max) * 100);
+                  })()}%`,
+                }}
+              />
+            </div>
+            {claimedDelta != null && claimedDelta !== 0 && (
+              <p className="text-xs text-muted-foreground">
+                {fmtNum(Math.abs(claimedDelta))} {claimedDelta > 0 ? "fewer" : "more"} than claimed
+              </p>
+            )}
+          </div>
         )}
 
+        {/* Row 4: equipment mini-tiles */}
         {items.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {visible.map(([cls, v]) => (
-              <span
-                key={cls}
-                className="inline-flex h-6 items-center gap-1 rounded-full border border-border bg-surface px-2 text-xs"
-              >
-                <span className="font-medium">{itemLabel(cls)}</span>
-                <span className="tabular text-muted-foreground">
-                  {v.present}
-                  {v.in_use > 0 ? ` (${v.in_use} in use)` : ""}
-                </span>
-              </span>
+              <EquipmentMiniTile key={cls} cls={cls} v={v} />
             ))}
-            {extra > 0 && (
-              <span className="tabular inline-flex h-6 items-center rounded-full border border-dashed border-border bg-surface px-2 text-xs text-muted-foreground">
-                +{extra}
-              </span>
+            {extra.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="tabular flex min-h-[60px] items-center justify-center rounded-lg border border-dashed bg-surface text-xs text-muted-foreground hover:border-border-strong"
+                  >
+                    +{extra.length}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-56 space-y-1.5">
+                  <p className="text-xs font-medium">More equipment</p>
+                  {extra.map(([cls, v]) => (
+                    <p key={cls} className="tabular flex justify-between text-xs text-muted-foreground">
+                      <span>{itemLabel(cls)}</span>
+                      <span>
+                        {v.in_use} / {v.present} {SCREEN_CLASSES.has(cls) ? "on" : "in use"}
+                      </span>
+                    </p>
+                  ))}
+                </PopoverContent>
+              </Popover>
             )}
           </div>
         )}
@@ -112,17 +215,19 @@ function LiveRoomCard({ room }: { room: LiveStatus }) {
         {badQuality && (
           <p className="flex items-start gap-1.5 text-xs text-warning">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span className="truncate">{room.quality.reasons.join(" · ")}</span>
+            <span className="truncate">{room.quality?.reasons.join(" · ")}</span>
           </p>
         )}
 
+        {/* Footer */}
         <div className="space-y-0.5 border-t pt-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-medium">{room.centre_name}</span>
+            <span className="truncate text-xs font-medium">{room.centre_name}</span>
             <span className="shrink-0 font-mono text-xs text-muted-foreground">{room.centre_code}</span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="tabular truncate text-xs text-muted-foreground">
             {room.session ? room.session.label : "No active session"}
+            {started && ` · Started ${formatTimeOnly(started)}`}
           </p>
         </div>
       </CardContent>
@@ -130,19 +235,8 @@ function LiveRoomCard({ room }: { room: LiveStatus }) {
       <Link
         href={`/centres/${room.centre_id}?tab=live`}
         className="absolute inset-0 z-20"
-        aria-label={`Open ${room.centre_name}`}
-      >
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="tabular absolute right-2 top-2 rounded-full border bg-background/85 px-2 py-0.5 text-xs text-muted-foreground">
-                {timeAgo(room.ts)}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{fmtIST(room.ts)}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </Link>
+        aria-label={`Open ${room.centre_name} live tab`}
+      />
     </Card>
   );
 }
@@ -151,14 +245,21 @@ function CardGridSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-lg border bg-card">
-          <Skeleton className="aspect-video w-full rounded-none" />
-          <div className="space-y-2 p-4">
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-8 w-20" />
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-4 w-full" />
+        <div key={i} className="space-y-3 rounded-lg border bg-card p-4">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-4 w-28" />
           </div>
+          <div className="flex items-end justify-between">
+            <Skeleton className="h-9 w-20" />
+            <Skeleton className="h-8 w-24" />
+          </div>
+          <Skeleton className="h-6 w-2/3" />
+          <div className="grid grid-cols-2 gap-1.5">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
+          <Skeleton className="h-4 w-full" />
         </div>
       ))}
     </div>
@@ -173,6 +274,8 @@ export default function LivePage() {
   const [state, setState] = React.useState<LiveState | null>(null);
   const debouncedDistrict = useDebounced(district, 200);
   const debouncedQ = useDebounced(q, 200);
+  const gridRef = React.useRef<HTMLDivElement>(null);
+  const firstReady = React.useRef(true);
 
   const params = React.useMemo(() => {
     const p = new URLSearchParams({ limit: "60" });
@@ -191,6 +294,21 @@ export default function LivePage() {
     refetchIntervalInBackground: false,
     staleTime: 5000,
   });
+
+  useGSAP(
+    () => {
+      if (!gridRef.current || !liveQ.data || !firstReady.current) return;
+      firstReady.current = false;
+      if (!motionOk()) return;
+      const cards = Array.from(gridRef.current.children).slice(0, 12);
+      gsap.fromTo(
+        cards,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: DUR.base, stagger: 0.035, ease: EASE.out, clearProps: "opacity,transform" }
+      );
+    },
+    { scope: gridRef, dependencies: [liveQ.data] }
+  );
 
   const counts = liveQ.data?.counts;
   const rows = React.useMemo(
@@ -224,6 +342,28 @@ export default function LivePage() {
       header: "Session",
       render: (r) => <span className="text-muted-foreground">{r.session?.label ?? "—"}</span>,
     },
+    {
+      key: "started",
+      header: "Started",
+      render: (r) => {
+        const started = r.session?.actual_start_ts ?? r.run_started_at;
+        return started ? (
+          <span className="tabular font-mono text-xs text-muted-foreground">{formatTimeOnly(started)}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
+      key: "elapsed",
+      header: "Elapsed",
+      render: (r) =>
+        r.state === "live" && r.elapsed_s != null ? (
+              <LiveElapsedLabel serverSeconds={r.elapsed_s} fetchedAt={liveQ.dataUpdatedAt} className="text-xs" />
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
     { key: "people", header: "People", numeric: true, render: (r) => fmtNum(r.people ?? 0) },
     {
       key: "claimed",
@@ -237,7 +377,7 @@ export default function LivePage() {
       header: "Items in use",
       render: (r) => {
         const used = Object.entries(r.items ?? {})
-          .filter(([, v]) => v.present > 0)
+          .filter(([cls, v]) => cls !== "person" && v.present > 0)
           .map(([cls, v]) => `${itemLabel(cls)} ${v.in_use}`)
           .join(" · ");
         return (
@@ -267,7 +407,7 @@ export default function LivePage() {
     <EmptyState
       icon={Radio}
       title="No rooms are being monitored right now."
-      hint="Rooms appear here when a centre starts its camera during a session."
+      hint="Rooms appear here when a centre starts monitoring during a session."
     />
   );
 
@@ -389,9 +529,12 @@ export default function LivePage() {
           <CardContent>{emptyState}</CardContent>
         </Card>
       ) : view === "grid" ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div
+          ref={gridRef as React.RefObject<HTMLDivElement>}
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+        >
           {rows.map((room) => (
-            <LiveRoomCard key={room.camera_id} room={room} />
+            <LiveDataCard key={room.camera_id} room={room} fetchedAt={liveQ.dataUpdatedAt} />
           ))}
         </div>
       ) : (
@@ -408,6 +551,7 @@ export default function LivePage() {
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <Camera className="h-3.5 w-3.5" aria-hidden />
+        <Users className="h-3.5 w-3.5" aria-hidden />
         Cameras count people anonymously. Trainee faces are never identified.
         <span className="ml-auto">Refreshes every 5 s</span>
       </p>

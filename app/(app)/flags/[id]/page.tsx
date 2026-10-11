@@ -14,14 +14,14 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { fmtIST, timeAgo } from "@/lib/format";
+import { fmtDuration, fmtIST, formatTimeOnly, timeAgo } from "@/lib/format";
 import { FLAG_TYPES, SEVERITY, type Severity } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/strings";
 import { useMe } from "@/hooks/useMe";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { FlagStatusChip, FlagTypeChip, SeverityDot, UncertainChip } from "@/components/shared/StatusChip";
+import { FlagStatusChip, FlagTypeChip, SessionStatusChip, SeverityDot, UncertainChip } from "@/components/shared/StatusChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -35,7 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Centre, Flag } from "@/types";
+import type { Centre, Flag, SessionDetail } from "@/types";
 
 export default function FlagDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -47,6 +47,15 @@ export default function FlagDetailPage() {
     queryKey: ["flag", id],
     queryFn: () => api<Flag>(`/flags/${id}`),
     refetchInterval: 30_000,
+  });
+
+  const flagData = flagQ.data;
+  const needsSessionCard = !!flagData?.session_id && ["M1", "C3"].includes(flagData.type);
+  const sessionQ = useQuery({
+    queryKey: ["flag-session", flagData?.session_id],
+    queryFn: () => api<SessionDetail>(`/sessions/${flagData!.session_id}`),
+    enabled: needsSessionCard,
+    staleTime: 30_000,
   });
 
   const centresQ = useQuery({
@@ -184,6 +193,62 @@ export default function FlagDetailPage() {
                 </div>
               )}
             </dl>
+          </div>
+
+          <div className="rounded-lg border bg-card p-6">
+            <h2 className="mb-3 text-base font-semibold">Session</h2>
+            {sessionQ.isLoading && <Skeleton className="h-24 w-full" />}
+            {sessionQ.error && !sessionQ.data && (
+              <p className="text-sm text-muted-foreground">Session record unavailable.</p>
+            )}
+            {sessionQ.data && (
+              (() => {
+                const s = sessionQ.data;
+                const status = s.status;
+                const missed = s.status === "missed";
+                return (
+                  <div className="space-y-2 rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{s.label ?? s.batch ?? "Session"}</span>
+                      <SessionStatusChip status={status} lineThrough />
+                    </div>
+                    <p className="tabular text-xs text-muted-foreground">
+                      Scheduled {formatTimeOnly(s.start_ts)} – {formatTimeOnly(s.end_ts)}
+                      {s.actual_start_ts || s.actual_end_ts
+                        ? ` · actual ${s.actual_start_ts ? formatTimeOnly(s.actual_start_ts) : "—"} – ${s.actual_end_ts ? formatTimeOnly(s.actual_end_ts) : "—"}`
+                        : ""}
+                    </p>
+                    {missed && <p className="text-xs text-danger">No camera data received.</p>}
+                    {s.cancel_reason && <p className="text-xs text-muted-foreground">Cancelled: {s.cancel_reason}</p>}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+                      <span className="tabular">
+                        <span className="text-muted-foreground">Monitored </span>
+                        {s.monitored_s != null ? fmtDuration(s.monitored_s) : "—"}
+                      </span>
+                      <span className="tabular">
+                        <span className="text-muted-foreground">Coverage </span>
+                        {s.coverage_pct != null ? `${s.coverage_pct}%` : "—"}
+                      </span>
+                      <span className="tabular">
+                        <span className="text-muted-foreground">Claimed </span>
+                        {s.claimed ?? "—"}
+                      </span>
+                      <span className="tabular">
+                        <span className="text-muted-foreground">Counted </span>
+                        {s.observed ?? "—"}
+                      </span>
+                    </div>
+                    {centre && s.session_date && (
+                      <Button asChild variant="secondary" size="sm" className="mt-1">
+                        <Link href={`/centres/${centre.id}?tab=calendar&date=${s.session_date}`}>
+                          See this day in the calendar
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                );
+              })()
+            )}
           </div>
 
           <div className="rounded-lg border bg-card p-6">

@@ -18,17 +18,20 @@ import { CalendarDays, Radio } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtIST, fmtNum, formatTimeOnly, timeAgo } from "@/lib/format";
 import { ITEM_LABEL, LIVE_STATE } from "@/lib/constants";
+import { todayIST } from "@/lib/calendar";
 import { useCountUp } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { ChartCard } from "@/components/shared/ChartCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { LiveStateChip, SeverityDot } from "@/components/shared/StatusChip";
+import { LiveStateChip, SessionStatusChip, SeverityDot } from "@/components/shared/StatusChip";
+import { RunList } from "@/components/shared/RunList";
+import { LiveElapsedLabel } from "@/components/shared/ElapsedTimer";
 import { SignedImage } from "@/components/shared/SignedImage";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { CentreLiveFeed, LiveStatus } from "@/types";
+import type { CentreLiveFeed, CentreSchedule, LiveStatus, RunRow } from "@/types";
 
 const SERIES_COLOR = ["var(--primary)", "var(--info)", "var(--warning)"];
 const MAX_SERIES = 3;
@@ -47,9 +50,10 @@ function UsageBar({ pct }: { pct: number }) {
   );
 }
 
-function RightNowCard({ cam }: { cam: LiveStatus }) {
+function RightNowCard({ cam, fetchedAt }: { cam: LiveStatus; fetchedAt: number }) {
   const peopleRef = useCountUp(cam.people ?? 0);
   const entries = Object.entries(cam.items ?? {});
+  const started = cam.session?.actual_start_ts ?? cam.run_started_at ?? null;
 
   return (
     <Card className="h-full">
@@ -74,6 +78,16 @@ function RightNowCard({ cam }: { cam: LiveStatus }) {
           <p className="mt-1 truncate text-xs text-muted-foreground">
             {cam.session ? cam.session.label : "No active session"}
           </p>
+          <p className="tabular mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            {cam.state === "live" ? (
+              <LiveElapsedLabel serverSeconds={cam.elapsed_s} fetchedAt={fetchedAt} className="text-muted-foreground" />
+            ) : cam.state === "offline" ? (
+              <span>Last seen {timeAgo(cam.ts)}</span>
+            ) : (
+              <span>Waiting for session</span>
+            )}
+            {started && <span>· Monitoring since {formatTimeOnly(started)}</span>}
+          </p>
         </div>
 
         {entries.length === 0 ? (
@@ -81,6 +95,7 @@ function RightNowCard({ cam }: { cam: LiveStatus }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">Equipment use</caption>
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="pb-2 font-medium">Class</th>
@@ -119,7 +134,84 @@ function RightNowCard({ cam }: { cam: LiveStatus }) {
   );
 }
 
+function TodayMonitoringCard({ cid, today }: { cid: string; today: string }) {
+  const runsQ = useQuery({
+    queryKey: ["centre-runs", cid, today],
+    queryFn: () => api<{ items: RunRow[] }>(`/centres/${cid}/runs?from=${today}&to=${today}`),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    staleTime: 15_000,
+  });
+  const schedQ = useQuery({
+    queryKey: ["centre-schedule-today", cid, today],
+    queryFn: () => api<CentreSchedule>(`/centres/${cid}/schedule?from=${today}&to=${today}`),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    staleTime: 15_000,
+  });
+
+  const runs = runsQ.data?.items ?? [];
+  const sessions = schedQ.data?.sessions ?? [];
+  const loading = runsQ.isLoading || schedQ.isLoading;
+
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle>Today&apos;s monitoring</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : (
+          <>
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Monitoring runs</p>
+              <div className="rounded-lg border p-2.5">
+                <RunList runs={runs} empty="No monitoring runs yet today." />
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Sessions</p>
+              {sessions.length === 0 ? (
+                <p className="rounded-lg border p-2.5 text-sm text-muted-foreground">No sessions scheduled today.</p>
+              ) : (
+                <ul className="divide-y divide-border rounded-lg border">
+                  {sessions.map((s) => (
+                    <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 p-2.5 text-xs">
+                      <SessionStatusChip
+                        status={s.status === "active" ? "running" : s.status}
+                        lineThrough
+                        className="shrink-0"
+                      />
+                      <span className={cn("font-medium", s.status === "cancelled" && "line-through")}>
+                        {s.label ?? "Session"}
+                      </span>
+                      <span className="tabular ml-auto font-mono text-muted-foreground">
+                        {formatTimeOnly(s.start_ts)} – {formatTimeOnly(s.end_ts)}
+                      </span>
+                      {(s.actual_start_ts || s.actual_end_ts) && (
+                        <span className="tabular w-full text-muted-foreground">
+                          Actual: {s.actual_start_ts ? formatTimeOnly(s.actual_start_ts) : "—"} –{" "}
+                          {s.actual_end_ts ? formatTimeOnly(s.actual_end_ts) : "—"}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function LiveTab({ cid, onOpenToday }: { cid: string; onOpenToday: () => void }) {
+  const today = todayIST();
   const q = useQuery({
     queryKey: ["centre-live", cid],
     queryFn: () => api<CentreLiveFeed>(`/centres/${cid}/live`),
@@ -171,8 +263,8 @@ export function LiveTab({ cid, onOpenToday }: { cid: string; onOpenToday: () => 
     return (
       <div className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-3">
-          <Skeleton className="aspect-video lg:col-span-2" />
-          <Skeleton className="h-64 lg:col-span-1" />
+          <Skeleton className="h-96 lg:col-span-2" />
+          <Skeleton className="h-96 lg:col-span-1" />
         </div>
         <Skeleton className="h-72 w-full" />
       </div>
@@ -197,60 +289,66 @@ export function LiveTab({ cid, onOpenToday }: { cid: string; onOpenToday: () => 
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-3 lg:col-span-2">
-          {cams.length > 1 && (
-            <div className="flex flex-wrap gap-1 rounded-lg border p-1" role="group" aria-label="Switch camera">
-              {cams.map((c) => (
-                <button
-                  key={c.camera_id}
-                  type="button"
-                  onClick={() => setCamId(c.camera_id)}
-                  aria-pressed={c.camera_id === cam.camera_id}
-                  className={cn(
-                    "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
-                    c.camera_id === cam.camera_id
-                      ? "bg-accent-soft text-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <span
-                    className={cn("h-1.5 w-1.5 rounded-full", c.state === "live" ? "bg-success live-dot" : "bg-muted-foreground")}
-                    aria-hidden
-                  />
-                  {c.camera_name}
-                </button>
-              ))}
-            </div>
-          )}
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              {cams.length > 1 && (
+                <div className="flex flex-wrap gap-1 rounded-lg border p-1" role="group" aria-label="Switch camera">
+                  {cams.map((c) => (
+                    <button
+                      key={c.camera_id}
+                      type="button"
+                      onClick={() => setCamId(c.camera_id)}
+                      aria-pressed={c.camera_id === cam.camera_id}
+                      className={cn(
+                        "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+                        c.camera_id === cam.camera_id
+                          ? "bg-accent-soft text-primary"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <span
+                        className={cn("h-1.5 w-1.5 rounded-full", c.state === "live" ? "bg-success live-dot" : "bg-muted-foreground")}
+                        aria-hidden
+                      />
+                      {c.camera_name}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-          <div className="relative aspect-video overflow-hidden rounded-lg border bg-surface-2">
-            <SignedImage
-              url={cam.thumb_url}
-              alt={`${cam.camera_name} latest frame`}
-              className={cn("h-full w-full rounded-none", !live && "opacity-60")}
-            />
-            <span className="absolute left-2 top-2 z-10">
-              <LiveStateChip state={cam.state} className="bg-background/85" />
-            </span>
-            <span
-              className="tabular absolute right-2 top-2 z-10 rounded-full border bg-background/85 px-2 py-0.5 text-xs text-muted-foreground"
-              title={fmtIST(cam.ts)}
-            >
-              {timeAgo(cam.ts)}
-            </span>
-            {!live && (
-              <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-                <span className="rounded-full border bg-background/90 px-3 py-0.5 text-xs font-medium shadow-sm">
-                  {stateLabel(cam.state)}
+              <div className="relative aspect-video overflow-hidden rounded-lg border bg-surface-2">
+                <SignedImage
+                  url={cam.thumb_url}
+                  alt={`${cam.camera_name} latest frame`}
+                  className={cn("h-full w-full rounded-none", !live && "opacity-60")}
+                />
+                <span className="absolute left-2 top-2 z-10">
+                  <LiveStateChip state={cam.state} className="bg-background/85" />
                 </span>
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {cam.camera_name} · refreshes every 5 s · cameras count people anonymously
-          </p>
+                <span
+                  className="tabular absolute right-2 top-2 z-10 rounded-full border bg-background/85 px-2 py-0.5 text-xs text-muted-foreground"
+                  title={fmtIST(cam.ts)}
+                >
+                  {timeAgo(cam.ts)}
+                </span>
+                {!live && (
+                  <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+                    <span className="rounded-full border bg-background/90 px-3 py-0.5 text-xs font-medium shadow-sm">
+                      {stateLabel(cam.state)}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {cam.camera_name} · refreshes every 5 s · cameras count people anonymously
+              </p>
+            </CardContent>
+          </Card>
+
+          <RightNowCard cam={cam} fetchedAt={q.dataUpdatedAt} />
         </div>
 
-        <RightNowCard cam={cam} />
+        <TodayMonitoringCard cid={cid} today={today} />
       </div>
 
       <ChartCard

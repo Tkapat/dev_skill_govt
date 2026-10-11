@@ -13,22 +13,24 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Building2, Flag as FlagIcon, FileText, Camera, AlertTriangle, Inbox } from "lucide-react";
+import { Building2, Flag as FlagIcon, FileText, Camera, AlertTriangle, Inbox, Radio } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtDate, fmtIST, fmtNum, timeAgo } from "@/lib/format";
-import { SEVERITY, type Severity } from "@/lib/constants";
-import { useStaggerIn } from "@/lib/motion";
+import { ITEM_LABEL, SEVERITY, type Severity } from "@/lib/constants";
+import { useCountUp, useStaggerIn } from "@/lib/motion";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { CurrentDateIST } from "@/components/shared/CurrentDateIST";
 import { KpiCard, KpiRowSkeleton } from "@/components/shared/KpiCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { SeverityDot, CentreStatusChip } from "@/components/shared/StatusChip";
+import { SeverityDot, CentreStatusChip, LiveStateChip } from "@/components/shared/StatusChip";
+import { LiveElapsedLabel } from "@/components/shared/ElapsedTimer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Meter } from "@/components/ui/meter";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Application, Camera as CameraT, Centre, Flag } from "@/types";
+import { todayIST } from "@/lib/calendar";
+import type { Application, Camera as CameraT, Centre, Flag, LiveFeed, LiveStatus, SessionCounts, SessionListFeed } from "@/types";
 
 const MapComponent = dynamic(() => import("./MapComponent"), {
   ssr: false,
@@ -94,6 +96,160 @@ function buildFlagBuckets(flags: Flag[]) {
     days[idx].total += 1;
   }
   return days;
+}
+
+const SCREEN_CLASSES = new Set(["monitor", "laptop"]);
+
+function equipmentPhrase(room: LiveStatus): string | null {
+  const entries = Object.entries(room.items ?? {}).filter(([cls, v]) => cls !== "person" && v.present > 0);
+  if (!entries.length) return null;
+  const [cls, v] = entries[0];
+  const label = (ITEM_LABEL[cls] ?? cls) + (v.present === 1 ? "" : cls === "chair" ? "s" : "");
+  const verb = SCREEN_CLASSES.has(cls) ? "on" : "in use";
+  return `${v.in_use} of ${v.present} ${label} ${verb}`;
+}
+
+function LiveRoomRow({ room, fetchedAt }: { room: LiveStatus; fetchedAt: number }) {
+  const peopleRef = useCountUp(room.people ?? 0);
+  const live = room.state === "live";
+  const phrase = equipmentPhrase(room);
+
+  return (
+    <Link
+      href={`/centres/${room.centre_id}?tab=live`}
+      className="flex items-center gap-3 rounded-lg p-2 -mx-2 hover:bg-surface-hover"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium">{room.centre_name}</span>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{room.centre_code}</span>
+        </span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          <span className="inline-flex items-baseline gap-1">
+            <span ref={peopleRef as React.RefObject<HTMLSpanElement>} className="tabular text-base font-semibold text-foreground" />
+            <span>people</span>
+          </span>
+          {phrase && <span className="tabular">{phrase}</span>}
+          {live ? (
+            <LiveElapsedLabel
+              serverSeconds={room.elapsed_s}
+              fetchedAt={fetchedAt}
+              className="text-[11px] text-muted-foreground"
+            />
+          ) : room.state === "offline" ? (
+            <span>Last seen {timeAgo(room.ts)}</span>
+          ) : (
+            <span>Waiting for session</span>
+          )}
+        </span>
+      </span>
+      <LiveStateChip state={room.state} className="shrink-0" />
+    </Link>
+  );
+}
+
+function LiveRoomsCard() {
+  const q = useQuery({
+    queryKey: ["overview", "live-rooms"],
+    queryFn: () => api<LiveFeed>("/live"),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    staleTime: 15_000,
+  });
+  const rooms = React.useMemo(
+    () => (q.data?.items ?? []).filter((r) => r.state === "live").slice(0, 4),
+    [q.data]
+  );
+  const liveTotal = q.data?.counts?.live ?? 0;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle>Live rooms now</CardTitle>
+        <Link href="/live" className="text-xs font-medium text-primary hover:underline">
+          Open Live wall
+        </Link>
+      </CardHeader>
+      <CardContent>
+        {q.isLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : rooms.length === 0 ? (
+          <EmptyState
+            icon={Radio}
+            title="No rooms are live"
+            hint={
+              liveTotal === 0
+                ? "Rooms appear here when a centre starts monitoring during a session."
+                : "Live rooms will appear here shortly."
+            }
+          />
+        ) : (
+          <ul className="divide-y divide-border">
+            {rooms.map((r) => (
+              <li key={r.camera_id}>
+                <LiveRoomRow room={r} fetchedAt={q.dataUpdatedAt} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TodaySessionsCard() {
+  const today = todayIST();
+  const q = useQuery({
+    queryKey: ["overview", "today-sessions", today],
+    queryFn: () => api<SessionListFeed>(`/sessions?date=${today}&limit=1`),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    staleTime: 15_000,
+  });
+  const c: SessionCounts | undefined = q.data?.counts;
+  const stats: { label: string; value: number; href: string }[] = [
+    { label: "Running", value: c?.running ?? 0, href: "/sessions?status=running" },
+    { label: "Held", value: c?.held ?? 0, href: "/sessions?status=held" },
+    { label: "Missed", value: c?.missed ?? 0, href: "/sessions?status=missed" },
+    { label: "Upcoming", value: c?.scheduled ?? 0, href: "/sessions?status=scheduled" },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle>Today&apos;s sessions</CardTitle>
+        <Link href="/sessions" className="text-xs font-medium text-primary hover:underline">
+          Open Sessions
+        </Link>
+      </CardHeader>
+      <CardContent>
+        {q.isLoading ? (
+          <div className="grid grid-cols-2 gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {stats.map((s) => (
+              <Link
+                key={s.label}
+                href={s.href}
+                className="rounded-lg border bg-surface p-2.5 transition-colors hover:border-border-strong"
+              >
+                <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                <p className="tabular mt-0.5 text-xl font-semibold">{fmtNum(s.value)}</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function OverviewPage() {
@@ -215,8 +371,14 @@ export default function OverviewPage() {
           </Card>
         </div>
 
+        {/* Live rooms now (NO pictures) */}
+        <LiveRoomsCard />
+
+        {/* Today's sessions */}
+        <TodaySessionsCard />
+
         {/* Latest flags */}
-        <Card className="lg:row-span-1">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Latest flags</CardTitle>
             <Link href="/flags" className="text-xs font-medium text-primary hover:underline">

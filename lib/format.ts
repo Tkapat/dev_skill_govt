@@ -1,6 +1,6 @@
 const IST = "Asia/Kolkata";
 
-function safeDate(d: string | Date | null | undefined): Date | null {
+export function safeDate(d: string | Date | null | undefined): Date | null {
   if (!d) return null;
   const dt = d instanceof Date ? d : new Date(d);
   return isNaN(dt.getTime()) ? null : dt;
@@ -59,6 +59,23 @@ export const tooltipTime = (d: string | Date | null | undefined): string => {
 
 export const fmtNum = (n: number) => n.toLocaleString("en-IN");
 export const fmtPct = (n: number) => `${Math.round(n)} %`;
+
+/** "1 h 02 min" / "42 min" / "35 s" */
+export const fmtDuration = (s: number) => {
+  const safe = Math.max(0, Math.round(s));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  return h ? `${h} h ${String(m).padStart(2, "0")} min` : m ? `${m} min` : `${safe} s`;
+};
+
+/** "00:42:10" — mono elapsed timer format */
+export const fmtClock = (s: number) =>
+  [Math.floor(s / 3600), Math.floor((s % 3600) / 60), Math.floor(s % 60)]
+    .map((n) => String(Math.max(0, n)).padStart(2, "0"))
+    .join(":");
+
+/** time-only, e.g. "9:02 am" */
+export const fmtTime = (d: string | Date | null | undefined) => formatTimeOnly(d);
 
 /* aliases kept for existing imports */
 export const formatDate = fmtIST;

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
   Building2,
+  CalendarClock,
   Camera,
   ClipboardList,
   FileText,
@@ -42,32 +43,35 @@ const GROUPS: { items: NavItem[]; divider?: boolean }[] = [
     items: [
       { href: "/overview", label: "Overview", icon: LayoutDashboard },
       { href: "/live", label: "Live", icon: Radio },
+      { href: "/sessions", label: "Sessions", icon: CalendarClock },
+    ],
+  },
+  {
+    divider: true,
+    items: [
       { href: "/applications", label: "Applications", icon: FileText },
       { href: "/centres", label: "Centres", icon: Building2 },
       { href: "/flags", label: "Flags", icon: Flag },
       { href: "/cameras", label: "Cameras", icon: Camera },
-    ],
-  },
-  {
-    divider: true,
-    items: [
       { href: "/requests", label: "Requests", icon: ClipboardList },
       { href: "/enforcement", label: "Enforcement", icon: Gavel },
-      { href: "/schemes", label: "Schemes", icon: ScrollText },
     ],
   },
   {
     divider: true,
     items: [
+      { href: "/schemes", label: "Schemes", icon: ScrollText },
       { href: "/reports", label: "Reports", icon: BarChart3 },
       { href: "/accuracy", label: "Accuracy", icon: Target },
       { href: "/audit-log", label: "Audit log", icon: History },
-      { href: "/users", label: "Users", icon: Users, adminOnly: true },
     ],
   },
   {
     divider: true,
-    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+    items: [
+      { href: "/users", label: "Users", icon: Users, adminOnly: true },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
   },
 ];
 

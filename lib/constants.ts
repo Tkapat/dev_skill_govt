@@ -14,6 +14,7 @@ export const FLAG_TYPES: Record<string, { name: string; hint: string }> = {
   D1: { name: "Data integrity", hint: "Record chain or signature failed verification" },
   U1: { name: "Unverifiable count", hint: "Counts unstable; needs human review" },
   P1: { name: "Capacity implausible", hint: "Equipment does not match trainee capacity" },
+  M1: { name: "Session not held", hint: "A scheduled session ended with no camera data" },
 };
 
 export const SEVERITY = {
@@ -53,6 +54,9 @@ export const DAY_STATUS = {
   ok: { label: "OK", icon: "CheckCircle2", tone: "success" },
   attention: { label: "Attention", icon: "AlertTriangle", tone: "warning" },
   critical: { label: "Critical", icon: "AlertOctagon", tone: "danger" },
+  missed: { label: "Not held", icon: "CalendarX2", tone: "danger" },
+  partial: { label: "Partly held", icon: "CircleDashed", tone: "warning" },
+  cancelled: { label: "Cancelled", icon: "Ban", tone: "muted" },
   no_data: { label: "No data", icon: "Minus", tone: "muted" },
   holiday: { label: "Holiday", icon: "CalendarOff", tone: "info" },
   upcoming: { label: "Scheduled", icon: "Clock", tone: "uncertain" },
@@ -60,6 +64,30 @@ export const DAY_STATUS = {
 } as const;
 
 export type DayStatus = keyof typeof DAY_STATUS;
+
+export const SESSION_STATUS = {
+  scheduled: { label: "Upcoming", icon: "Clock", tone: "muted" },
+  running: { label: "Running", icon: "Radio", tone: "success" },
+  closed: { label: "Held", icon: "CheckCircle2", tone: "success" },
+  missed: { label: "Not held", icon: "CalendarX2", tone: "danger" },
+  cancelled: { label: "Cancelled", icon: "Ban", tone: "muted" },
+} as const;
+
+export type SessionStatusKey = keyof typeof SESSION_STATUS;
+
+export const RUN_END_REASON: Record<string, string> = {
+  manual: "Stopped by user",
+  timeout: "Timed out",
+  session_end: "Session ended",
+  error: "Error",
+  system: "System",
+};
+
+export const SESSION_KIND: Record<string, string> = {
+  scheduled: "Recurring",
+  oneoff: "One-off",
+  adhoc: "Demo",
+};
 
 export const FLAG_STATUS_LABEL: Record<string, string> = {
   open: "Open",

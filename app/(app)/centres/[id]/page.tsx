@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, CalendarDays, KeyRound, MoreHorizontal, Radio, ScrollText, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, KeyRound, MoreHorizontal, Radio, ScrollText, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtPct, timeAgo } from "@/lib/format";
 import { isYmd, todayIST } from "@/lib/calendar";
@@ -41,12 +41,14 @@ import {
 } from "./tabs";
 import { LiveTab } from "./live-tab";
 import { CalendarTab } from "./calendar-tab";
+import { ScheduleTab } from "./schedule-tab";
 
 const TABS = [
   { id: "overview", label: "Overview" },
   { id: "live", label: "Live", icon: Radio },
-  { id: "attendance", label: "Attendance" },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
+  { id: "schedule", label: "Schedule", icon: CalendarClock },
+  { id: "attendance", label: "Attendance" },
   { id: "equipment", label: "Equipment" },
   { id: "cameras", label: "Cameras" },
   { id: "flags", label: "Flags" },
@@ -246,11 +248,14 @@ export default function CentreDetailPage() {
         <TabsContent value="live" className="mt-4">
           <LiveTab cid={id} onOpenToday={openTodayInCalendar} />
         </TabsContent>
-        <TabsContent value="attendance" className="mt-4">
-          <AttendanceTab cid={id} />
-        </TabsContent>
         <TabsContent value="calendar" className="mt-4">
           <CalendarTab cid={id} date={date} onDateChange={setCalendarDate} />
+        </TabsContent>
+        <TabsContent value="schedule" className="mt-4">
+          <ScheduleTab cid={id} />
+        </TabsContent>
+        <TabsContent value="attendance" className="mt-4">
+          <AttendanceTab cid={id} />
         </TabsContent>
         <TabsContent value="equipment" className="mt-4">
           <EquipmentTab cid={id} />

@@ -26,11 +26,21 @@ interface RollupRow {
   count: number;
   open_flags: number;
   risk_avg: number;
+  sessions_total: number;
+  sessions_held: number;
+  sessions_missed: number;
+  sessions_held_pct: number | null;
+  avg_coverage_pct: number | null;
 }
 
 function downloadCsv(filename: string, rows: RollupRow[], by: string) {
-  const header = [by, "centres", "open_flags", "avg_risk"];
-  const lines = [header.join(","), ...rows.map((r) => [r.key, r.count, r.open_flags, r.risk_avg].join(","))];
+  const header = [by, "centres", "open_flags", "avg_risk", "sessions_total", "sessions_held", "sessions_missed", "sessions_held_pct", "avg_coverage_pct"];
+  const lines = [
+    header.join(","),
+    ...rows.map((r) =>
+      [r.key, r.count, r.open_flags, r.risk_avg, r.sessions_total ?? 0, r.sessions_held ?? 0, r.sessions_missed ?? 0, r.sessions_held_pct ?? "", r.avg_coverage_pct ?? ""].join(",")
+    ),
+  ];
   const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -54,10 +64,20 @@ export default function ReportsPage() {
   const totalFlags = rows.reduce((s, r) => s + r.open_flags, 0);
   const avgRisk = totalCentres ? rows.reduce((s, r) => s + r.risk_avg * r.count, 0) / totalCentres : 0;
   const worst = rows[0];
+  const totalSessions = rows.reduce((s, r) => s + (r.sessions_total ?? 0), 0);
+  const totalHeld = rows.reduce((s, r) => s + (r.sessions_held ?? 0), 0);
+  const totalMissed = rows.reduce((s, r) => s + (r.sessions_missed ?? 0), 0);
+  const heldPct = totalSessions ? Math.round((totalHeld / totalSessions) * 100) : null;
+  const withCoverage = rows.filter((r) => r.avg_coverage_pct != null);
+  const avgCoverage = withCoverage.length
+    ? Math.round(withCoverage.reduce((s, r) => s + (r.avg_coverage_pct ?? 0), 0) / withCoverage.length)
+    : null;
 
   const summary = rows.length
     ? `${rows.length} ${by}(s), ${fmtNum(totalCentres)} centres, ${fmtNum(totalFlags)} open flags, average risk ${fmtPct(avgRisk)}${
         worst ? `, highest in ${worst.key} (${fmtPct(worst.risk_avg)})` : ""
+      }${heldPct != null ? `, ${heldPct}% sessions held` : ""}${totalMissed ? `, ${totalMissed} missed` : ""}${
+        avgCoverage != null ? `, avg coverage ${avgCoverage}%` : ""
       }.`
     : "No data to summarise yet.";
 
@@ -110,12 +130,15 @@ export default function ReportsPage() {
       </PageHeader>
 
       {rollupQ.isLoading ? (
-        <KpiRowSkeleton count={3} />
+        <KpiRowSkeleton count={6} />
       ) : (
         <div className="grid gap-4 md:grid-cols-3">
           <KpiCard eyebrow="Centres in report" value={totalCentres} loading={false} />
           <KpiCard eyebrow="Open flags" value={totalFlags} loading={false} />
           <KpiCard eyebrow="Avg risk" value={Math.round(avgRisk)} loading={false} />
+          <KpiCard eyebrow="Sessions held %" value={heldPct ?? 0} loading={false} />
+          <KpiCard eyebrow="Missed sessions" value={totalMissed} loading={false} />
+          <KpiCard eyebrow="Avg coverage %" value={avgCoverage ?? 0} loading={false} />
         </div>
       )}
 
@@ -170,6 +193,11 @@ export default function ReportsPage() {
                 <TableHead className="text-right">Centres</TableHead>
                 <TableHead className="text-right">Open flags</TableHead>
                 <TableHead className="text-right">Avg risk</TableHead>
+                <TableHead className="text-right">Sessions</TableHead>
+                <TableHead className="text-right">Held</TableHead>
+                <TableHead className="text-right">Missed</TableHead>
+                <TableHead className="text-right">Held %</TableHead>
+                <TableHead className="text-right">Avg coverage</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -179,6 +207,15 @@ export default function ReportsPage() {
                   <TableCell className="tabular text-right">{r.count}</TableCell>
                   <TableCell className="tabular text-right">{r.open_flags}</TableCell>
                   <TableCell className="tabular text-right">{fmtPct(r.risk_avg)}</TableCell>
+                  <TableCell className="tabular text-right">{r.sessions_total ?? 0}</TableCell>
+                  <TableCell className="tabular text-right">{r.sessions_held ?? 0}</TableCell>
+                  <TableCell className="tabular text-right">{r.sessions_missed ?? 0}</TableCell>
+                  <TableCell className="tabular text-right">
+                    {r.sessions_held_pct != null ? `${r.sessions_held_pct}%` : "—"}
+                  </TableCell>
+                  <TableCell className="tabular text-right">
+                    {r.avg_coverage_pct != null ? `${r.avg_coverage_pct}%` : "—"}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

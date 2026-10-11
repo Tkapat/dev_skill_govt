@@ -39,11 +39,41 @@ interface Template {
   step_frames: number;
   max_frames: number;
   active: boolean;
+  detector_backend?: "auto" | "coco" | "world";
+  model?: string;
+  imgsz?: number;
+  min_box_area?: number;
+  class_confidence?: Record<string, number>;
+  class_aliases?: Record<string, string>;
 }
+
+const DETECTOR_BACKENDS = [
+  { value: "auto", label: "Auto" },
+  { value: "coco", label: "COCO" },
+  { value: "world", label: "World" },
+];
+
+const MODELS = [
+  { value: "yolo11n", label: "YOLO11n (fastest)" },
+  { value: "yolo11s", label: "YOLO11s (balanced)" },
+  { value: "yolo11m", label: "YOLO11m (most accurate)" },
+];
 
 function num(v: string, fallback: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function parseJsonMap(v: string): Record<string, number | string> | undefined {
+  const t = v.trim();
+  if (!t) return {};
+  try {
+    const parsed = JSON.parse(t);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export default function TemplateEditorPage() {
@@ -53,6 +83,10 @@ export default function TemplateEditorPage() {
   const { isSuperAdmin } = useMe();
 
   const [form, setForm] = React.useState<Template | null>(null);
+  const [confText, setConfText] = React.useState("");
+  const [aliasText, setAliasText] = React.useState("");
+  const [confError, setConfError] = React.useState(false);
+  const [aliasError, setAliasError] = React.useState(false);
 
   const q = useQuery({
     queryKey: ["template", tid],
@@ -62,16 +96,57 @@ export default function TemplateEditorPage() {
 
   React.useEffect(() => {
     if (q.data && !form) {
-      setForm({ ...q.data, detector_classes: q.data.detector_classes ?? [], equipment_rules: q.data.equipment_rules ?? [] });
+      setForm({
+        ...q.data,
+        detector_classes: q.data.detector_classes ?? [],
+        equipment_rules: q.data.equipment_rules ?? [],
+        detector_backend: q.data.detector_backend ?? "auto",
+        model: q.data.model ?? "yolo11s",
+        imgsz: q.data.imgsz ?? 640,
+        min_box_area: q.data.min_box_area ?? 900,
+        class_confidence: q.data.class_confidence ?? {},
+        class_aliases: q.data.class_aliases ?? {},
+      });
+      setConfText(JSON.stringify(q.data.class_confidence ?? {}, null, 2));
+      setAliasText(JSON.stringify(q.data.class_aliases ?? {}, null, 2));
     }
   }, [q.data, form]);
+
+  const buildBody = (f: Template): Partial<Template> => {
+    const body: Partial<Template> = { ...f };
+    const conf = parseJsonMap(confText);
+    const alias = parseJsonMap(aliasText);
+    if (conf === undefined) setConfError(true);
+    else {
+      setConfError(false);
+      body.class_confidence = conf as Record<string, number>;
+    }
+    if (alias === undefined) setAliasError(true);
+    else {
+      setAliasError(false);
+      body.class_aliases = alias as Record<string, string>;
+    }
+    return body;
+  };
 
   const save = useMutation({
     mutationFn: (body: Partial<Template>) =>
       api<Template>(`/templates/${tid}`, { method: "PUT", body: JSON.stringify(body) }),
     onSuccess: (data) => {
       toast.success("Template saved.");
-      setForm({ ...data, detector_classes: data.detector_classes ?? [], equipment_rules: data.equipment_rules ?? [] });
+      setForm({
+        ...data,
+        detector_classes: data.detector_classes ?? [],
+        equipment_rules: data.equipment_rules ?? [],
+        detector_backend: data.detector_backend ?? "auto",
+        model: data.model ?? "yolo11s",
+        imgsz: data.imgsz ?? 640,
+        min_box_area: data.min_box_area ?? 900,
+        class_confidence: data.class_confidence ?? {},
+        class_aliases: data.class_aliases ?? {},
+      });
+      setConfText(JSON.stringify(data.class_confidence ?? {}, null, 2));
+      setAliasText(JSON.stringify(data.class_aliases ?? {}, null, 2));
       qc.invalidateQueries({ queryKey: ["templates", id] });
     },
     onError: (e) => {
@@ -126,7 +201,7 @@ export default function TemplateEditorPage() {
               <Button
                 disabled={!dirty}
                 loading={save.isPending}
-                onClick={() => save.mutate(form)}
+                onClick={() => save.mutate(buildBody(form))}
               >
                 Save changes
               </Button>
@@ -166,6 +241,90 @@ export default function TemplateEditorPage() {
                   )
                 }
               />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="det-backend">Detector backend</Label>
+                <select
+                  id="det-backend"
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  disabled={!editable}
+                  value={form.detector_backend ?? "auto"}
+                  onChange={(e) => set("detector_backend", e.target.value as Template["detector_backend"])}
+                >
+                  {DETECTOR_BACKENDS.map((b) => (
+                    <option key={b.value} value={b.value}>
+                      {b.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="det-model">Model</Label>
+                <select
+                  id="det-model"
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  disabled={!editable}
+                  value={form.model ?? "yolo11s"}
+                  onChange={(e) => set("model", e.target.value)}
+                >
+                  {MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="imgsz">Image size (px)</Label>
+                <Input
+                  id="imgsz"
+                  type="number"
+                  step={32}
+                  disabled={!editable}
+                  value={form.imgsz ?? 640}
+                  onChange={(e) => set("imgsz", num(e.target.value, 640))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="min-box">Min box area (px²)</Label>
+                <Input
+                  id="min-box"
+                  type="number"
+                  disabled={!editable}
+                  value={form.min_box_area ?? 900}
+                  onChange={(e) => set("min_box_area", num(e.target.value, 900))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="class-conf">Per-class confidence (JSON: {`{"W01": 0.4}`})</Label>
+              <textarea
+                id="class-conf"
+                rows={3}
+                className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs"
+                disabled={!editable}
+                value={confText}
+                onChange={(e) => setConfText(e.target.value)}
+                spellCheck={false}
+              />
+              {confError && <p className="text-xs text-danger">Invalid JSON object.</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="class-alias">Class aliases (JSON: {`{"S01": "sewing machine"}`})</Label>
+              <textarea
+                id="class-alias"
+                rows={3}
+                className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs"
+                disabled={!editable}
+                value={aliasText}
+                onChange={(e) => setAliasText(e.target.value)}
+                spellCheck={false}
+              />
+              {aliasError && <p className="text-xs text-danger">Invalid JSON object.</p>}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -332,6 +491,20 @@ export default function TemplateEditorPage() {
                       onChange={(e) => setRule(i, { required: e.target.checked })}
                     />
                     Required
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm">
+                    <span className="text-muted-foreground">Operability</span>
+                    <select
+                      className="h-8 rounded-md border bg-background px-2 text-xs"
+                      disabled={!editable}
+                      value={r.operability ?? "assumed"}
+                      onChange={(e) => setRule(i, { operability: e.target.value })}
+                      aria-label="Operability"
+                    >
+                      <option value="assumed">Assumed OK</option>
+                      <option value="checked">Checked each session</option>
+                      <option value="optional">Optional</option>
+                    </select>
                   </label>
                 </div>
               </div>

@@ -1,11 +1,14 @@
 import {
   AlertOctagon,
   AlertTriangle,
+  Ban,
   CalendarOff,
+  CalendarX2,
   CheckCircle2,
   ChevronUp,
   ChevronsUp,
   Circle,
+  CircleDashed,
   Clock,
   HelpCircle,
   Minus,
@@ -23,7 +26,9 @@ import {
   FLAG_STATUS_LABEL,
   FLAG_TYPES,
   LIVE_STATE,
+  RUN_END_REASON,
   SEVERITY,
+  SESSION_STATUS,
   type Severity,
 } from "@/lib/constants";
 
@@ -201,6 +206,9 @@ export const DAY_STATUS_ICON = {
   ok: CheckCircle2,
   attention: AlertTriangle,
   critical: AlertOctagon,
+  missed: CalendarX2,
+  partial: CircleDashed,
+  cancelled: Ban,
   no_data: Minus,
   holiday: CalendarOff,
   upcoming: Clock,
@@ -211,6 +219,9 @@ const DAY_TONE: Record<string, string> = {
   ok: "text-success",
   attention: "text-warning",
   critical: "text-danger",
+  missed: "text-danger",
+  partial: "text-warning",
+  cancelled: "text-muted-foreground",
   no_data: "text-muted-foreground",
   holiday: "text-info",
   upcoming: "text-uncertain",
@@ -227,11 +238,101 @@ export function DayStatusChip({ status, className }: { status: string; className
       className={cn(
         "inline-flex h-6 items-center gap-1.5 rounded-full border border-current/30 bg-current/10 px-2 text-xs font-medium",
         known ? DAY_TONE[status] : "text-muted-foreground",
+        status === "missed" && "border-dashed",
         className
       )}
     >
       <Icon className="h-3 w-3" aria-hidden />
       {known ? DAY_STATUS[key].label : status}
+    </span>
+  );
+}
+
+/* ---------- session status (v4) ---------- */
+
+const SESSION_STATUS_ICON = {
+  scheduled: Clock,
+  running: Radio,
+  closed: CheckCircle2,
+  missed: CalendarX2,
+  cancelled: Ban,
+} as const;
+
+const SESSION_TONE: Record<string, string> = {
+  scheduled: "text-muted-foreground",
+  running: "text-success",
+  closed: "text-success",
+  missed: "text-danger",
+  cancelled: "text-muted-foreground",
+};
+
+/** icon + label for a session; Running has the pulsing live dot; Cancelled is dashed. */
+export function SessionStatusChip({
+  status,
+  lineThrough = false,
+  className,
+}: {
+  status: string;
+  lineThrough?: boolean;
+  className?: string;
+}) {
+  const known = status in SESSION_STATUS;
+  const key = status as keyof typeof SESSION_STATUS;
+  const Icon = known ? SESSION_STATUS_ICON[key] : Clock;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1.5 rounded-full border border-current/30 bg-current/10 px-2 text-xs font-medium",
+        known ? SESSION_TONE[status] : "text-muted-foreground",
+        status === "missed" && "border-dashed",
+        className
+      )}
+    >
+      {status === "running" && <span className="h-2 w-2 rounded-full bg-current live-dot" aria-hidden />}
+      <Icon className="h-3 w-3" aria-hidden />
+      <span className={lineThrough && status === "cancelled" ? "line-through" : undefined}>
+        {known ? SESSION_STATUS[key].label : status}
+      </span>
+    </span>
+  );
+}
+
+/* ---------- monitor run end reason (v4) ---------- */
+
+const RUN_REASON_TONE: Record<string, string> = {
+  manual: "text-muted-foreground",
+  timeout: "text-warning",
+  session_end: "text-success",
+  error: "text-danger",
+  system: "text-info",
+};
+
+export function RunEndReasonChip({ reason, running = false, className }: { reason?: string | null; running?: boolean; className?: string }) {
+  if (running) {
+    return (
+      <span
+        className={cn(
+          "inline-flex h-6 items-center gap-1.5 rounded-full border border-current/30 bg-current/10 px-2 text-xs font-medium text-success",
+          className
+        )}
+      >
+        <span className="h-2 w-2 rounded-full bg-current live-dot" aria-hidden />
+        Running
+      </span>
+    );
+  }
+  const label = reason ? RUN_END_REASON[reason] ?? reason : "—";
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium",
+        reason ? (RUN_REASON_TONE[reason] ?? "text-muted-foreground") : "text-muted-foreground",
+        !reason && "border-border bg-surface",
+        reason && "border-current/30 bg-current/10",
+        className
+      )}
+    >
+      {label}
     </span>
   );
 }
